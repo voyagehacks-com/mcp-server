@@ -1,0 +1,24 @@
+{
+  "name": "voyagehacks-mcp",
+  "version": "1.0.0",
+  "description": "Official MCP (Model Context Protocol) server for VoyageHacks.com: travel guides, gear recommendations and booking links for AI agents. Live at https://voyagehacks.com/mcp",
+  "type": "module",
+  "homepage": "https://voyagehacks.com/mcp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/voyagehacks-com/mcp-server.git"
+  },
+  "author": "VoyageHacks <support@voyagehacks.com>",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "travel",
+    "flights",
+    "hotels",
+    "travel-gear",
+    "cloudflare-pages",
+    "ai-agents"
+  ]
+}
