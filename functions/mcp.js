@@ -93,7 +93,11 @@ const LANG_REGION = { de: 'dach', cs: 'cee', pl: 'cee', es: 'espt', nl: 'benelux
 // CJ_REGIONS' 'deeplink' ads. Keep in sync with params.cj.partners in hugo.yaml.
 const CJ_PARTNERS = { getyourguide: '15735609', vueling: '15733900', budgetair: '17289819', ihg: '15734302' };
 
-// params.amazon.tag: every /dp/<ASIN> link is built from this.
+// Deliberately NOT params.amazon.tag: agent surfaces (MCP, llms.txt,
+// agent-skills) use the dedicated 'voyagehacks-20' tracking ID (same Amazon
+// Associates account) so agent-driven sales are attributable separately from
+// on-site clicks. Do not "sync" this back to hugo.yaml's tag. Matches the
+// public mirror at github.com/voyagehacks-com/mcp-server.
 const AMAZON_TAG = 'voyagehacks-20';
 const AMAZON_STOREFRONT = 'https://www.amazon.com/shop/divinediscoveriesforyou';
 
