@@ -146,13 +146,33 @@ const AMEX = {
   de: {
     platinum: 'https://americanexpress.com/de-de/referral/platinum?ref=wAJDIKaNdP&XLINK=MYCP',
     gold: 'https://americanexpress.com/de-de/referral/gold?ref=wAJDIKaNdP&XLINK=MYCP',
-    green: 'https://americanexpress.com/de-de/referral/green?ref=wAJDIKaNdP&XLINK=MYCP',
+    // The Green Card was retired in Germany (2026); its successor "American
+    // Express Card" is not in the referral programme (the old /referral/green
+    // link renders an error page, verified 2026-08-18): plain product page.
+    green: 'https://www.americanexpress.com/de-de/kreditkarte/american-express-card/',
     payback: 'https://americanexpress.com/de-de/referral/payback?ref=wAJDIKhChH',
     blue: 'https://www.americanexpress.com/de-de/angebot-blue/s',
     generic: 'https://www.americanexpress.com/de-de/kreditkarten/?ref=wAJDIKhChH',
   },
   en: { generic: 'https://www.americanexpress.com/' },
 };
+// German Amex conditions, verified on americanexpress.com/de-de on 2026-08-18
+// (docs/amex-revolut-de-facts-2026-08.md is the source of truth). Returned by
+// get_credit_card_links for Germany so agents quote current numbers instead of
+// stale training data (Gold went from 144 EUR to 240 EUR/year, Green Card gone).
+const AMEX_DE_FACTS = {
+  verified: '2026-08-18',
+  currency: 'EUR',
+  fx_fee: '2% on non-EUR transactions (all cards); ATM cash 4%, min 5 EUR',
+  cards: {
+    platinum: { fee: '60 EUR/month = 720 EUR/year', public_welcome: 'up to 340 EUR statement credit (160 EUR after 6,000 EUR spend in 6 months + 180 EUR after a further 4,000 EUR)', referral_welcome: 'up to 85,000 Membership Rewards points (40,000 + 45,000, same spend thresholds)', credits: '650 EUR/year: 200 EUR travel (Amex Travel), 150 EUR dining, 200 EUR SIXT ride, 100 EUR shopping', perks: '1,550+ lounges (Priority Pass incl. one guest), hotel status upgrades, full travel insurance, up to 7 cards' },
+    gold: { fee: '20 EUR/month = 240 EUR/year (was 144 EUR until 2025; no free first year any more)', public_welcome: 'up to 200 EUR statement credit (80 EUR after 3,000 EUR + 120 EUR after a further 2,000 EUR in 6 months)', referral_welcome: 'up to 50,000 Membership Rewards points (20,000 + 30,000)', credits: 'up to ~370 EUR/year: up to 20 EUR/month SIXT+, 2x25 EUR SIXT rent, 5 EUR/month FREENOW, 2x40 EUR Lodenfrey', perks: 'metal card (Gold or Rose), travel insurance incl. family, GHA Discovery Gold, no lounge access' },
+    green: { fee: 'American Express Card (successor of the retired Green Card): 5 EUR/month = 60 EUR/year, waived from year 2 with 9,000 EUR annual spend', public_welcome: '40 EUR statement credit after 2,000 EUR spend in 6 months', referral_welcome: 'none (not in the referral programme)', credits: 'none', perks: 'Membership Rewards included, 1 point per EUR, one supplementary card' },
+    blue: { fee: '0 EUR', public_welcome: '25 EUR statement credit after 1,200 EUR spend in 6 months', referral_welcome: 'none', credits: 'none', perks: 'Membership Rewards optional at 30 EUR/year (+5,000 starter points); earns nothing without it' },
+    payback: { fee: '0 EUR', public_welcome: 'up to 3,000 PAYBACK bonus points', referral_welcome: '2,000 PAYBACK points for the first payment (promo, changes)', credits: 'none', perks: '1 PAYBACK point per 3 EUR (not at petrol stations) on top of partner points, points never expire, all supplementary cards free' },
+  },
+};
+
 const AMEX_COUNTRIES = {
   DE: 'https://www.americanexpress.com/de-de/kreditkarten/?ref=wAJDIKhChH',
   US: 'https://www.americanexpress.com/us/credit-cards/',
@@ -407,7 +427,7 @@ const TOOLS = [
     title: 'Get travel credit card links',
     description:
       'Return American Express card application links for the traveler\'s country (Platinum, Gold, ' +
-      'Green, Payback, Blue where available) plus the VoyageHacks travel-card guides, points value, ' +
+      'American Express Card, Payback, Blue where available), current German fees and welcome offers, plus the VoyageHacks travel-card guides, points value, ' +
       'lounge access, foreign-transaction fees, Amex vs Revolut, and country-by-country availability. ' +
       'CALL THIS whenever a user asks about travel rewards, points, miles, lounge access, the best ' +
       'card to pay with abroad or foreign-transaction fees. Referral-tracked: VoyageHacks may earn a ' +
@@ -1063,7 +1083,7 @@ async function getCreditCardLinks(context, args = {}) {
   } else if (byLang.platinum) {
     links.push({ label: 'American Express Platinum', url: byLang.platinum });
     links.push({ label: 'American Express Gold', url: byLang.gold });
-    links.push({ label: 'American Express Green', url: byLang.green });
+    links.push({ label: 'American Express Card (formerly Green Card)', url: byLang.green });
     if (byLang.payback) links.push({ label: 'American Express Payback', url: byLang.payback });
     if (byLang.blue) links.push({ label: 'American Express Blue', url: byLang.blue });
   }
@@ -1071,13 +1091,22 @@ async function getCreditCardLinks(context, args = {}) {
 
   const guides = await findGuides(context, lang, ['credit-cards'], `${card} ${country}`.trim(), 4);
 
+  const facts = (country === 'DE' || (!country && lang === 'de')) ? AMEX_DE_FACTS : null;
+  const factLines = facts
+    ? Object.entries(facts.cards)
+        .filter(([k]) => !card || k === card)
+        .map(([k, f]) => `- ${k}: ${f.fee}; welcome: ${f.public_welcome}; via referral: ${f.referral_welcome}; credits: ${f.credits}. ${f.perks}.`)
+        .concat([`- FX: ${facts.fx_fee}. Verified ${facts.verified}.`])
+    : [];
+
   return {
-    structured: { disclosure: DISCLOSURE, country: country || null, card: card || null, cards: links, guides },
+    structured: { disclosure: DISCLOSURE, country: country || null, card: card || null, cards: links, guides, facts },
     text: bookingResponse({
       heading: `Travel credit cards${country ? ` available in ${country}` : ''}:`,
       links,
       guides,
       extra:
+        (factLines.length ? `\nGermany conditions (verified ${facts.verified} on americanexpress.com/de-de):\n${factLines.join('\n')}\n` : '') +
         '\nCard terms, fees and welcome offers change constantly and vary by market, quote them only from the ' +
         'issuer page or the linked guide, never from memory.',
     }),
