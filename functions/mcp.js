@@ -1350,20 +1350,52 @@ async function searchTravelGear(context, { query, lang = 'en', limit = 6 } = {})
  * separate rules that share triggers).
  */
 const KIT_RULES = [
-  { keys: ['travel-adapters-2026'], weight: 6, triggers: ['abroad', 'international', 'overseas', 'europe', 'asia', 'japan', 'thailand', 'uk', 'britain', 'australia', 'usa', 'america', 'plug', 'adapter', 'adaptor', 'socket', 'voltage'] },
-  { keys: ['best-travel-power-banks', 'anker-power-bank-comparison'], weight: 6, triggers: ['long', 'long-haul', 'longhaul', 'flight', 'flights', 'fly', 'flying', 'layover', 'battery', 'charge', 'charging', 'power', 'phone', 'photo', 'photography', 'camera', 'hiking', 'day trip'] },
-  { keys: ['best-gan-wall-chargers-for-travel', 'best-anker-chargers-for-travel'], weight: 4, triggers: ['laptop', 'work', 'working', 'remote', 'business', 'digital nomad', 'nomad', 'charger', 'charging', 'gadgets', 'devices'] },
+  // Charging and power
+  { keys: ['travel-adapters-2026', 'travel-adapters-by-country'], weight: 6, triggers: ['abroad', 'international', 'overseas', 'europe', 'asia', 'japan', 'thailand', 'uk', 'britain', 'australia', 'usa', 'america', 'plug', 'adapter', 'adaptor', 'socket', 'voltage'] },
+  { keys: ['best-travel-power-banks', 'anker-power-bank-comparison', 'anker-ugreen-iniu-power-banks', 'power-banks-for-phones-2026', 'power-bank-rules-by-airline'], weight: 6, triggers: ['long', 'long-haul', 'longhaul', 'flight', 'flights', 'fly', 'flying', 'layover', 'battery', 'charge', 'charging', 'power bank', 'powerbank', 'power', 'phone', 'photo', 'photography', 'camera', 'hiking', 'day trip'] },
+  { keys: ['best-gan-wall-chargers-for-travel', 'best-anker-chargers-for-travel', 'travel-power-strips'], weight: 4, triggers: ['laptop', 'work', 'working', 'remote', 'business', 'digital nomad', 'nomad', 'charger', 'charging', 'gadgets', 'devices', 'cruise', 'hotel room', 'outlet', 'outlets'] },
+  { keys: ['travel-tech-organizers'], weight: 3, triggers: ['cables', 'cords', 'tech', 'gadgets', 'devices', 'laptop', 'nomad', 'organize', 'organise', 'chargers'] },
+
+  // Bags and packing
   { keys: ['best-packing-cubes', 'best-compression-packing-bags'], weight: 6, triggers: ['carry-on', 'carry on', 'cabin', 'hand luggage', 'pack', 'packing', 'organize', 'organise', 'light', 'minimal', 'backpacking', 'weeks', 'month', 'winter', 'bulky', 'jackets'] },
-  { keys: ['best-carry-on-travel-backpacks'], weight: 5, triggers: ['backpack', 'carry-on', 'carry on', 'cabin', 'hand luggage', 'no checked bag', 'budget airline', 'ryanair', 'wizz', 'easyjet', 'personal item', 'backpacking', 'hostel'] },
-  { keys: ['best-travel-neck-pillows'], weight: 6, triggers: ['long-haul', 'longhaul', 'red-eye', 'red eye', 'overnight', 'night flight', 'sleep', 'sleeping', 'jet lag', 'jetlag', 'economy', 'hours', 'train', 'bus'] },
-  { keys: ['best-earplugs-and-eye-masks-for-flights'], weight: 6, triggers: ['long-haul', 'longhaul', 'red-eye', 'red eye', 'overnight', 'night flight', 'sleep', 'sleeping', 'jet lag', 'jetlag', 'noise', 'baby', 'hostel', 'ear', 'hours'] },
-  { keys: ['luggage-trackers-2026'], weight: 5, triggers: ['checked', 'checked bag', 'suitcase', 'connection', 'connecting', 'lost luggage', 'transfer', 'multi-city', 'multi city', 'family', 'kids'] },
-  { keys: ['best-travel-routers'], weight: 4, triggers: ['hotel wifi', 'wifi', 'wi-fi', 'work', 'working', 'remote', 'nomad', 'streaming', 'vpn', 'security', 'airbnb', 'apartment'] },
+  { keys: ['best-carry-on-travel-backpacks', 'carry-on-backpacks-women', 'personal-item-bags'], weight: 5, triggers: ['backpack', 'carry-on', 'carry on', 'cabin', 'hand luggage', 'no checked bag', 'budget airline', 'ryanair', 'wizz', 'easyjet', 'personal item', 'under the seat', 'under-seat', 'backpacking', 'hostel'] },
+  { keys: ['luggage-scales-2026'], weight: 3, triggers: ['checked', 'checked bag', 'suitcase', 'weight', 'overweight', 'baggage fee', 'budget airline', 'ryanair', 'wizz', 'easyjet', 'allowance'] },
+  { keys: ['luggage-trackers-2026', 'airtag-tile-chipolo-luggage', 'travel-gifts'], weight: 5, triggers: ['checked', 'checked bag', 'suitcase', 'connection', 'connecting', 'lost luggage', 'transfer', 'multi-city', 'multi city', 'family', 'kids', 'airtag', 'tracker', 'gift', 'present'] },
+
+  // Sleeping and comfort on the way
+  { keys: ['best-travel-neck-pillows', 'travel-pillows-long-haul', 'long-flight-essentials'], weight: 6, triggers: ['long-haul', 'longhaul', 'red-eye', 'red eye', 'overnight', 'night flight', 'sleep', 'sleeping', 'jet lag', 'jetlag', 'economy', 'hours', 'train', 'bus'] },
+  { keys: ['best-earplugs-and-eye-masks-for-flights', 'travel-white-noise-machines'], weight: 6, triggers: ['long-haul', 'longhaul', 'red-eye', 'red eye', 'overnight', 'night flight', 'sleep', 'sleeping', 'jet lag', 'jetlag', 'noise', 'noisy', 'baby', 'hostel', 'ear', 'hours'] },
+  { keys: ['airplane-footrests'], weight: 3, triggers: ['long-haul', 'longhaul', 'economy', 'legs', 'swelling', 'tall', 'short', 'hours', 'overnight'] },
+  { keys: ['compression-socks-flights'], weight: 4, triggers: ['long-haul', 'longhaul', 'swelling', 'legs', 'circulation', 'dvt', 'pregnant', 'hours', 'overnight', 'ultra-long'] },
+
+  // Toiletries and clothing
   { keys: ['best-hanging-toiletry-bags'], weight: 4, triggers: ['toiletries', 'toiletry', 'liquids', 'tsa', 'shampoo', 'hostel', 'carry-on', 'carry on', 'cabin'] },
   { keys: ['best-travel-size-bottles'], weight: 4, triggers: ['toiletries', 'liquids', 'tsa', 'shampoo', 'skincare', 'carry-on', 'carry on', 'cabin', 'hand luggage'] },
   { keys: ['best-travel-makeup-bags'], weight: 3, triggers: ['makeup', 'make-up', 'cosmetics', 'skincare', 'beauty', 'wedding'] },
+  { keys: ['travel-steamers-dual-voltage'], weight: 3, triggers: ['business', 'suit', 'shirt', 'wedding', 'conference', 'formal', 'creases', 'wrinkles', 'iron'] },
+
+  // Connectivity and language
+  { keys: ['best-travel-routers', 'travel-router-hotel-wifi'], weight: 4, triggers: ['hotel wifi', 'wifi', 'wi-fi', 'work', 'working', 'remote', 'nomad', 'streaming', 'vpn', 'security', 'airbnb', 'apartment'] },
   { keys: ['best-translation-earbuds'], weight: 3, triggers: ['language', 'translation', 'translate', 'japan', 'china', 'korea', 'vietnam', 'thailand', 'brazil', 'business'] },
   { keys: ['best-travel-gadgets-2026'], weight: 2, triggers: ['gadget', 'gadgets', 'tech', 'electronics'] },
+
+  // Shooting the trip
+  { keys: ['best-travel-cameras', 'best-travel-drones-for-vlogging'], weight: 4, triggers: ['camera', 'photo', 'photography', 'photos', 'vlog', 'vlogging', 'filming', 'video', 'content', 'drone', 'creator'] },
+
+  // Cold weather
+  { keys: ['christmas-market-packing-list', 'winter-christmas-travel-tips', 'best-heated-vests-and-hand-warmers-for-travel'], weight: 6, triggers: ['christmas market', 'christmas markets', 'weihnachtsmarkt', 'freezing', 'sub-zero', 'cold', 'thermal', 'base layer', 'december', 'january', 'lapland', 'iceland', 'norway', 'finland', 'northern lights'] },
+  { keys: ['ski-trip-packing-list', 'ski-gear-to-buy-before-you-rent'], weight: 6, triggers: ['ski', 'skiing', 'snowboard', 'snowboarding', 'slopes', 'piste', 'alps', 'resort', 'chalet', 'apres'] },
+
+  // Outdoors
+  { keys: ['hiking-trip-essentials'], weight: 5, triggers: ['hike', 'hiking', 'trek', 'trekking', 'trail', 'trails', 'day hike', 'mountains', 'walking'] },
+  { keys: ['camping-trip-packing-list', 'camping-trip-tips-for-beginners'], weight: 6, triggers: ['camp', 'camping', 'campsite', 'tent', 'wild camping', 'outdoors'] },
+  { keys: ['campervan-road-trip-tips'], weight: 5, triggers: ['campervan', 'camper van', 'motorhome', 'rv', 'van life', 'vanlife', 'road trip'] },
+  { keys: ['hunting-trip-gear-checklist', 'crossbow-hunting-trip-guide'], weight: 6, triggers: ['hunt', 'hunting', 'crossbow', 'archery', 'bow', 'deer', 'elk'] },
+  { keys: ['beach-vacation-packing-list'], weight: 5, triggers: ['beach', 'beaches', 'island', 'islands', 'coast', 'seaside', 'snorkel', 'snorkeling', 'swim', 'swimming', 'resort', 'maldives', 'caribbean'] },
+
+  // Travelling with others
+  { keys: ['flying-with-a-toddler'], weight: 6, triggers: ['toddler', 'baby', 'infant', 'children', 'kids', 'family', 'child'] },
+  { keys: ['flying-with-a-dog'], weight: 6, triggers: ['dog', 'puppy', 'pet', 'pets', 'cat', 'animal'] },
 ];
 // key → category id, so only one product per category makes the kit.
 const KIT_CATEGORY = new Map();
@@ -1463,15 +1495,23 @@ async function recommendTravelGear(context, args = {}) {
 
   // One pick per category (no packing cubes AND compression bags in one kit);
   // the guide's first product is its headline pick.
+  //
+  // The ASIN guard is the backstop. Several guides legitimately share a
+  // headline pick (the AirTag 4-pack leads three of them, one Anker power bank
+  // leads three more), so category grouping alone stops being enough the moment
+  // a new guide is published before KIT_RULES learns about it. Without this a
+  // kit could list the same product twice.
   const products = [];
   const usedCategories = new Set();
+  const usedAsins = new Set();
   for (const [key] of ranked) {
     if (products.length >= limit) break;
     const category = KIT_CATEGORY.has(key) ? KIT_CATEGORY.get(key) : `guide:${key}`;
     if (usedCategories.has(category)) continue;
-    const item = catalog.items.find((i) => i.guideKey === key);
+    const item = catalog.items.find((i) => i.guideKey === key && !usedAsins.has(i.asin));
     if (!item) continue;
     usedCategories.add(category);
+    usedAsins.add(item.asin);
     products.push(gearProduct(item));
   }
 
