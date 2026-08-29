@@ -1349,6 +1349,32 @@ async function searchTravelGear(context, { query, lang = 'en', limit = 6 } = {})
  * complements (a neck pillow and earplugs both belong on a red-eye, so they are
  * separate rules that share triggers).
  */
+// Function words carry no signal about which gear category a trip needs, and
+// they collide with guide titles constantly ("Best Power Banks FOR iPhone",
+// "What TO Pack"). Covers the languages the tools accept; tokenize() already
+// drops single characters. Only used for the guide-title overlap score, never
+// for the KIT_RULES triggers, which are explicit multi-word phrases.
+const TRIP_STOPWORDS = new Set([
+  // en
+  'the', 'and', 'for', 'with', 'from', 'that', 'this', 'they', 'them', 'their', 'there', 'what',
+  'when', 'where', 'which', 'will', 'would', 'have', 'has', 'had', 'been', 'being', 'are', 'was',
+  'were', 'about', 'into', 'over', 'some', 'any', 'all', 'own', 'out', 'off', 'not', 'but', 'can',
+  'get', 'got', 'going', 'go', 'need', 'needs', 'want', 'take', 'taking', 'bring', 'pack', 'packing',
+  'travel', 'trip', 'trips', 'holiday', 'vacation', 'best', 'good', 'gear', 'stuff', 'things', 'item',
+  'items', 'buy', 'should', 'you', 'your', 'our', 'its', 'his', 'her', 'him', 'she', 'the',
+  // de / nl
+  'und', 'der', 'die', 'das', 'den', 'dem', 'ein', 'eine', 'mit', 'für', 'von', 'nach', 'reise',
+  'een', 'het', 'van', 'voor', 'met', 'naar', 'reis',
+  // fr
+  'les', 'des', 'une', 'pour', 'avec', 'dans', 'sur', 'est', 'voyage',
+  // es / pt
+  'los', 'las', 'del', 'una', 'para', 'con', 'por', 'que', 'viaje', 'viagem', 'uma', 'como',
+  // it
+  'gli', 'dei', 'della', 'per', 'con', 'nel', 'viaggio',
+  // pl / cs
+  'dla', 'nie', 'jak', 'podróż', 'pro', 'jak', 'cesta', 'cestovni',
+]);
+
 const KIT_RULES = [
   // Charging and power
   { keys: ['travel-adapters-2026', 'travel-adapters-by-country'], weight: 6, triggers: ['abroad', 'international', 'overseas', 'europe', 'asia', 'japan', 'thailand', 'uk', 'britain', 'australia', 'usa', 'america', 'plug', 'adapter', 'adaptor', 'socket', 'voltage'] },
@@ -1479,8 +1505,12 @@ async function recommendTravelGear(context, args = {}) {
     const hits = rule.triggers.filter((t) => text.includes(t)).length;
     if (hits) for (const key of rule.keys) bump(key, rule.weight + hits);
   }
-  // Free-text overlap with each guide's own title/tags/keywords.
-  const tokens = tokenize(text);
+  // Free-text overlap with each guide's own title/tags/keywords, ignoring
+  // function words. "for" appears in 40 of the 51 guide titles, so leaving it
+  // in bumped almost the whole catalog by 2 for any trip description
+  // containing it, which is most of them: "flying to Spain with my dog"
+  // surfaced the ski packing list on the strength of "with".
+  const tokens = tokenize(text).filter((t) => !TRIP_STOPWORDS.has(t));
   for (const guide of catalog.guides) {
     const hay = `${guide.title} ${(guide.tags || []).join(' ')} ${(guide.keywords || []).join(' ')}`.toLowerCase();
     let n = 0;
