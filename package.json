@@ -1,7 +1,7 @@
 {
   "name": "voyagehacks-mcp",
-  "version": "1.0.0",
-  "description": "Official MCP (Model Context Protocol) server for VoyageHacks.com: travel guides, gear recommendations and booking links for AI agents. Live at https://voyagehacks.com/mcp",
+  "version": "2.1.0",
+  "description": "Official MCP (Model Context Protocol) server for VoyageHacks.com: multilingual travel guides, travel gear recommendations and booking links for AI agents. Live at https://voyagehacks.com/mcp",
   "type": "module",
   "homepage": "https://voyagehacks.com/mcp",
   "repository": {
