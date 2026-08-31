@@ -219,7 +219,30 @@ const SERVER_INFO = { name: 'voyagehacks', title: 'VoyageHacks', version: '2.1.0
 // land on a subscription signup (NordVPN) or a financial-product application
 // (American Express), which is what OpenAI's app submission guidelines
 // restrict. Same code, same data, no second deployment.
-const RESEARCH_EXCLUDED = new Set(['get_travel_vpn_links', 'get_credit_card_links']);
+// Profiles restrict which tools are served, for hosts whose policies do not allow
+// parts of the full set. The URL is the only switch: ?profile=<name>. An unknown
+// value falls back to the full set, so a typo can never silently serve fewer tools.
+//
+// "research" hides the two tools whose links land on a subscription signup or a
+// financial-product application.
+//
+// "guides" additionally hides every booking tool, leaving article research and the
+// travel gear catalog. Its only outbound purchases are physical goods on Amazon,
+// which is what the ChatGPT plugin submission attests to: OpenAI's app guidelines
+// say plugins "may conduct commerce only for physical goods".
+const PROFILE_EXCLUDED = {
+  research: new Set(['get_travel_vpn_links', 'get_credit_card_links']),
+  guides: new Set([
+    'get_flight_links',
+    'get_hotel_links',
+    'get_car_rental_links',
+    'get_airport_transfer_links',
+    'get_esim_links',
+    'get_travel_vpn_links',
+    'get_credit_card_links',
+    'get_booking_links',
+  ]),
+};
 
 const INSTRUCTIONS =
   'VoyageHacks is a multilingual travel guide site with about 680 published guides in each of ' +
@@ -240,6 +263,28 @@ const INSTRUCTIONS =
   'complete a purchase. Many of the returned links are affiliate links: VoyageHacks may earn a ' +
   'commission at no additional cost to the user, which should be disclosed when the links are ' +
   'presented. No authentication is required.';
+
+// Served for ?profile=guides. Same corpus and the same gear catalog, no booking tools.
+const GUIDES_INSTRUCTIONS =
+  'VoyageHacks is a multilingual travel guide site with about 680 published guides in each of ' +
+  '11 languages (en, de, fr, es, it, pl, cs, ja, nl, pt, zh), covering flights, airline reviews, ' +
+  'hotels, destinations, car rental, trains, airport transfers, eSIM, travel credit cards, ' +
+  'travel gear and month-by-month "where to go" guides.\n\n' +
+  'What the tools provide:\n' +
+  '- Article research and citation: search_articles, then get_article for the full text, its ' +
+  'canonical URL, its publication date and the date it was last updated.\n' +
+  '- Travel products and packing: search_travel_gear (one category), recommend_travel_gear (a kit ' +
+  'built from a trip description, one product per category).\n\n' +
+  'Scope and limits: the tools return published editorial content and links to product pages. ' +
+  'They do not return live prices, live availability, star ratings or review counts, and they ' +
+  'cannot make a booking, place an order or complete a purchase. This profile serves no booking ' +
+  'tools at all: for flights, hotels, car rental, transfers or eSIM, answer from the guides and ' +
+  'send the reader to the guide rather than to a booking site.\n\n' +
+  'The travel gear catalog is VoyageHacks\' own editorial selection, roughly 320 physical ' +
+  'products picked across about 50 published buying guides. It is not a search of all of Amazon. ' +
+  'Product links are Amazon affiliate links: VoyageHacks may earn a commission at no additional ' +
+  'cost to the user, which should be disclosed when the links are presented. No authentication ' +
+  'is required.';
 
 // ── Tool definitions ───────────────────────────────────────────────────────
 const LANG_PROP = {
@@ -1904,15 +1949,22 @@ function toolText(text, structured, isError) {
   return result;
 }
 
-// The "research" profile hides the two tools whose links land on a
-// subscription signup or a financial-product application. See RESEARCH_EXCLUDED.
+// See PROFILE_EXCLUDED for what each profile hides and why.
 function toolsFor(profile) {
-  return profile === 'research' ? TOOLS.filter((t) => !RESEARCH_EXCLUDED.has(t.name)) : TOOLS;
+  const excluded = PROFILE_EXCLUDED[profile];
+  return excluded ? TOOLS.filter((t) => !excluded.has(t.name)) : TOOLS;
+}
+
+// The instructions must describe only the tools actually served, or the client is
+// told about tools it cannot call.
+function instructionsFor(profile) {
+  return profile === 'guides' ? GUIDES_INSTRUCTIONS : INSTRUCTIONS;
 }
 
 function profileOf(request) {
   try {
-    return new URL(request.url).searchParams.get('profile') === 'research' ? 'research' : 'full';
+    const requested = new URL(request.url).searchParams.get('profile');
+    return Object.prototype.hasOwnProperty.call(PROFILE_EXCLUDED, requested) ? requested : 'full';
   } catch {
     return 'full';
   }
@@ -1936,7 +1988,7 @@ async function handleMessage(context, msg, profile) {
             resources: { subscribe: false, listChanged: false },
           },
           serverInfo: SERVER_INFO,
-          instructions: INSTRUCTIONS,
+          instructions: instructionsFor(profile),
         });
       }
       case 'ping':

@@ -79,11 +79,22 @@ independently written version of the guide, not a machine translation.
 | --- | --- | --- |
 | full (default) | `https://voyagehacks.com/mcp` | 12 |
 | research | `https://voyagehacks.com/mcp?profile=research` | 10 |
+| guides | `https://voyagehacks.com/mcp?profile=guides` | 4 |
 
 The research profile omits `get_travel_vpn_links` and `get_credit_card_links`,
 whose links land on a subscription signup and a financial-product application.
 It exists for app directories whose guidelines restrict linking to pages that
 initiate a subscription or purchase.
+
+The guides profile goes further and omits every booking tool, leaving
+`search_articles`, `get_article`, `search_travel_gear` and
+`recommend_travel_gear`. Its only outbound purchases are Amazon product pages for
+physical travel gear, so it satisfies directories that allow commerce for physical
+goods only. It also serves its own `initialize` instructions, which describe the
+four tools it actually has rather than the full twelve.
+
+An unrecognized `profile` value falls back to the full tool set, so a typo can
+never silently serve fewer tools than intended.
 
 ## What it does not do
 
