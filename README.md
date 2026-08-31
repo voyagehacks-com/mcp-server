@@ -93,8 +93,12 @@ physical travel gear, so it satisfies directories that allow commerce for physic
 goods only. It also serves its own `initialize` instructions, which describe the
 four tools it actually has rather than the full twelve.
 
-An unrecognized `profile` value falls back to the full tool set, so a typo can
-never silently serve fewer tools than intended.
+Each profile is addressable two ways: `/mcp?profile=guides` and `/mcp/guides` are
+the same handler. The path form exists because the OpenAI plugin submission portal
+rejects a query string in its MCP Server URL field.
+
+An unrecognized profile, in either form, falls back to the full tool set, so a typo
+can never silently serve fewer tools than intended.
 
 ## What it does not do
 

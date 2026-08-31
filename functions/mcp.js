@@ -1961,9 +1961,14 @@ function instructionsFor(profile) {
   return profile === 'guides' ? GUIDES_INSTRUCTIONS : INSTRUCTIONS;
 }
 
+// A profile can be named either way: /mcp?profile=guides or /mcp/guides. The path
+// form exists because the OpenAI plugin portal rejects a query string in the server
+// URL field. See functions/mcp/[profile].js.
 function profileOf(request) {
   try {
-    const requested = new URL(request.url).searchParams.get('profile');
+    const url = new URL(request.url);
+    const fromPath = url.pathname.replace(/^\/mcp\/?/, '').replace(/\/+$/, '');
+    const requested = url.searchParams.get('profile') || fromPath;
     return Object.prototype.hasOwnProperty.call(PROFILE_EXCLUDED, requested) ? requested : 'full';
   } catch {
     return 'full';
