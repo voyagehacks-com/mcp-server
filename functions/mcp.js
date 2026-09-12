@@ -80,9 +80,7 @@ const TP = {
 const CJ_CLICK_BASE = 'https://www.anrdoezrs.net/click-101807574-';
 const CJ_REGIONS = {
   na:      { deeplink: '17293132', taxis: '17322565', cars: '17288983', attractions: '17288984' },
-  // DACH's Attractions text link was retired (gone from the 2026-08-12
-  // links.csv re-export): the slot is omitted br-style, cjLink falls back to NA.
-  dach:    { deeplink: '14082404', taxis: '17322522', cars: '17122733' },
+  dach:    { deeplink: '14082404', taxis: '17322522', cars: '17122733', attractions: '17254617' },
   cee:     { deeplink: '14312907', taxis: '17322543', cars: '17122732', attractions: '17254616' },
   benelux: { deeplink: '13397436', taxis: '17322536', cars: '17122731', attractions: '17254615' },
   uk:      { deeplink: '15734754', taxis: '17322563', cars: '17122730', attractions: '17254657' },
@@ -90,8 +88,7 @@ const CJ_REGIONS = {
   mea:     { deeplink: '15734197', taxis: '17322550', cars: '17122729', attractions: '17254656' },
   apac:    { deeplink: '17293139', taxis: '17322570', cars: '17289008', attractions: '17289009' },
   au:      { deeplink: '17293136', taxis: '17322577', cars: '17304773', attractions: '17289014' },
-  // Brazil's CJ program ships no Attractions link.
-  br:      { deeplink: '17293138', taxis: '17322581', cars: '17288987' },
+  br:      { deeplink: '17293138', taxis: '17322581', cars: '17288987', attractions: '17288988' },
   latam:   { deeplink: '17293137', taxis: '17322585', cars: '17288997', attractions: '17288999' },
   // Italy + Nordics: approved per the 2026-08-12 links.csv re-export. Italy's
   // Evergreen deep link browser-verified the same day (aid=818291 + cjevent).
@@ -200,7 +197,7 @@ const AMEX_COUNTRIES = {
 // Affiliate disclosure. Shipped with every commercial response and named in
 // every commercial tool description: Amazon Associates, CJ and Travelpayouts
 // all require disclosure at the point the link is presented.
-const DISCLOSURE =
+export const DISCLOSURE =
   'Some links returned by this tool are affiliate links. VoyageHacks may earn a commission ' +
   'from qualifying bookings or purchases at no additional cost to the user. Disclose this ' +
   'when presenting the links.';
@@ -347,7 +344,7 @@ const LINKS_SCHEMA = {
   },
 };
 
-const TOOLS = [
+export const TOOLS = [
   {
     name: 'search_articles',
     title: 'Search VoyageHacks travel guides',
@@ -862,7 +859,7 @@ const RESOURCES = [
 // nothing unbounded is ever echoed back. Without these a 400 KB `query` used
 // to come back as a 243 KB response, and get_article on /ja/index.json
 // returned 1.35 MB: both are amplification vectors, not just untidy output.
-const LIMITS = {
+export const LIMITS = {
   body: 262144,          // 256 KB of JSON-RPC per request
   batch: 25,             // messages in one JSON-RPC batch
   freeText: 600,         // `trip` and other long free-text fields
@@ -917,7 +914,7 @@ const RATE_WINDOW_MS = 60000;
 const RATE_MAX = 90;
 const rateBuckets = new Map();
 
-function rateLimited(request) {
+export function rateLimited(request) {
   const ip = request.headers.get('CF-Connecting-IP');
   if (!ip) return false;
   const now = Date.now();
@@ -1425,11 +1422,14 @@ const KIT_RULES = [
   { keys: ['travel-adapters-2026', 'travel-adapters-by-country'], weight: 6, triggers: ['abroad', 'international', 'overseas', 'europe', 'asia', 'japan', 'thailand', 'uk', 'britain', 'australia', 'usa', 'america', 'plug', 'adapter', 'adaptor', 'socket', 'voltage'] },
   { keys: ['best-travel-power-banks', 'anker-power-bank-comparison', 'anker-ugreen-iniu-power-banks', 'power-banks-for-phones-2026', 'power-bank-rules-by-airline'], weight: 6, triggers: ['long', 'long-haul', 'longhaul', 'flight', 'flights', 'fly', 'flying', 'layover', 'battery', 'charge', 'charging', 'power bank', 'powerbank', 'power', 'phone', 'photo', 'photography', 'camera', 'hiking', 'day trip'] },
   { keys: ['best-gan-wall-chargers-for-travel', 'best-anker-chargers-for-travel', 'travel-power-strips'], weight: 4, triggers: ['laptop', 'work', 'working', 'remote', 'business', 'digital nomad', 'nomad', 'charger', 'charging', 'gadgets', 'devices', 'cruise', 'hotel room', 'outlet', 'outlets'] },
+  { keys: ['best-portable-travel-monitors'], weight: 3, triggers: ['laptop', 'work', 'working', 'remote', 'business', 'digital nomad', 'nomad', 'workation', 'second screen', 'monitor', 'coworking', 'conference'] },
   { keys: ['travel-tech-organizers'], weight: 3, triggers: ['cables', 'cords', 'tech', 'gadgets', 'devices', 'laptop', 'nomad', 'organize', 'organise', 'chargers'] },
 
   // Bags and packing
   { keys: ['best-packing-cubes', 'best-compression-packing-bags'], weight: 6, triggers: ['carry-on', 'carry on', 'cabin', 'hand luggage', 'pack', 'packing', 'organize', 'organise', 'light', 'minimal', 'backpacking', 'weeks', 'month', 'winter', 'bulky', 'jackets'] },
-  { keys: ['best-carry-on-travel-backpacks', 'carry-on-backpacks-women', 'personal-item-bags'], weight: 5, triggers: ['backpack', 'carry-on', 'carry on', 'cabin', 'hand luggage', 'no checked bag', 'budget airline', 'ryanair', 'wizz', 'easyjet', 'personal item', 'under the seat', 'under-seat', 'backpacking', 'hostel'] },
+  /* Bag you carry on: backpack, wheeled carry-on or personal item. They are
+     substitutes, so one rule yields one bag, never three. */
+  { keys: ['best-carry-on-travel-backpacks', 'carry-on-suitcases', 'carry-on-backpacks-women', 'personal-item-bags'], weight: 5, triggers: ['backpack', 'suitcase', 'spinner', 'roller', 'wheeled', 'carry-on', 'carry on', 'cabin', 'hand luggage', 'no checked bag', 'budget airline', 'ryanair', 'wizz', 'easyjet', 'personal item', 'under the seat', 'under-seat', 'backpacking', 'hostel'] },
   { keys: ['luggage-scales-2026'], weight: 3, triggers: ['checked', 'checked bag', 'suitcase', 'weight', 'overweight', 'baggage fee', 'budget airline', 'ryanair', 'wizz', 'easyjet', 'allowance'] },
   { keys: ['luggage-trackers-2026', 'airtag-tile-chipolo-luggage', 'travel-gifts'], weight: 5, triggers: ['checked', 'checked bag', 'suitcase', 'connection', 'connecting', 'lost luggage', 'transfer', 'multi-city', 'multi city', 'family', 'kids', 'airtag', 'tracker', 'gift', 'present'] },
 
@@ -1913,7 +1913,11 @@ async function getBookingLinks(context, args = {}) {
 }
 
 // ── Tool dispatch ──────────────────────────────────────────────────────────
-const HANDLERS = {
+// Exported so a second protocol binding (in production, an A2A endpoint at
+// /a2a) can serve the same twelve tools without reimplementing one of them.
+// Everything else here is internal; keep the export list minimal so a second
+// binding cannot drift into its own behaviour.
+export const HANDLERS = {
   search_articles: searchArticles,
   get_article: getArticle,
   search_travel_gear: searchTravelGear,
