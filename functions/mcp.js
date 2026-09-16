@@ -1430,6 +1430,7 @@ const KIT_RULES = [
   /* Bag you carry on: backpack, wheeled carry-on or personal item. They are
      substitutes, so one rule yields one bag, never three. */
   { keys: ['best-carry-on-travel-backpacks', 'carry-on-suitcases', 'carry-on-backpacks-women', 'personal-item-bags'], weight: 5, triggers: ['backpack', 'suitcase', 'spinner', 'roller', 'wheeled', 'carry-on', 'carry on', 'cabin', 'hand luggage', 'no checked bag', 'budget airline', 'ryanair', 'wizz', 'easyjet', 'personal item', 'under the seat', 'under-seat', 'backpacking', 'hostel'] },
+  { keys: ['best-passport-holders'], weight: 4, triggers: ['passport', 'passports', 'documents', 'visa', 'border', 'immigration', 'pickpocket', 'pickpockets', 'theft', 'family', 'kids', 'children', 'international', 'abroad', 'overseas', 'airtag', 'lost'] },
   { keys: ['luggage-scales-2026'], weight: 3, triggers: ['checked', 'checked bag', 'suitcase', 'weight', 'overweight', 'baggage fee', 'budget airline', 'ryanair', 'wizz', 'easyjet', 'allowance'] },
   { keys: ['luggage-trackers-2026', 'airtag-tile-chipolo-luggage', 'travel-gifts'], weight: 5, triggers: ['checked', 'checked bag', 'suitcase', 'connection', 'connecting', 'lost luggage', 'transfer', 'multi-city', 'multi city', 'family', 'kids', 'airtag', 'tracker', 'gift', 'present'] },
 
