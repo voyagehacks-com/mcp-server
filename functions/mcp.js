@@ -123,7 +123,7 @@ const LANG_REGION = { de: 'dach', cs: 'cee', pl: 'cee', es: 'espt', it: 'it', nl
 // CJ partner Evergreen Links, deep-link enabled, same ?sid=&url= mechanics as
 // CJ_REGIONS' 'deeplink' ads. Keep in sync with params.cj.partners in hugo.yaml.
 const CJ_PARTNERS = {
-  getyourguide: '15735609', vueling: '15733900', budgetair: '17289819', ihg: '15734302',
+  getyourguide: '15735609', vueling: '15733900', ihg: '15734302',
   // Outdoor/adventure stores (Aug 2026): Kings Camo hunting + camping apparel,
   // Velocity Outdoor = Ravin / CenterPoint crossbows and archery.
   kingscamo: '15784057', velocityoutdoor: '15734445',
