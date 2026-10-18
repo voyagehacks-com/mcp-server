@@ -198,7 +198,8 @@ select,input{font:inherit;color:var(--fg);background:var(--bg);border:1px solid 
     var cards=picks.length?'<div class="cards">'+picks.map(card).join('')+'</div>':'<div class="empty">Try another month or trip type.</div>';
     var pack=(sc.packing||[]).length?'<div class="pack"><h2>Pack for it (picks from the VoyageHacks buying guides)</h2><div class="packrow">'+
       sc.packing.map(function(g){ return '<button data-url="'+esc(g.productUrl)+'">'+esc(g.name)+'<small>'+esc(g.badge||g.category||'')+'</small></button>'; }).join('')+'</div></div>':'';
-    var foot='<div class="note">'+esc(sc.disclosure||'')+' Prices and availability are shown on the booking site.'+(sc.tripFinder?' <button class="link" data-url="'+esc(sc.tripFinder)+'">Open the trip finder</button>':'')+'</div>';
+    var hasLinks=picks.some(function(p){ return (p.links||[]).length; });
+    var foot='<div class="note">'+esc(sc.disclosure||'')+(hasLinks?' Prices and availability are shown on the booking site.':'')+(sc.tripFinder?' <button class="link" data-url="'+esc(sc.tripFinder)+'">Open the trip finder</button>':'')+'</div>';
     app.innerHTML=head+'<div id="formslot"></div>'+cards+pack+foot;
     document.getElementById('change').addEventListener('click',function(){ var s=document.getElementById('formslot'); s.innerHTML=s.innerHTML?'':formHtml(a,'Change your answers'); bindForm(); size(); });
     size();

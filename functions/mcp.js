@@ -2315,7 +2315,11 @@ async function findDestination(context, args = {}) {
     return { name: pl.n, country: pl.c || null, guide: `${SITE}${pl.u}`, image: pl.i ? `${SITE}${pl.i}` : null, avgHighC: c.high, season: c.fit, costLevel: c.cost, reasons, links };
   });
   // Linkless profile: keep the guide, drop every booking link.
-  if (LINKLESS_PROFILES.has(context.vhProfile)) for (const p of picks) p.links = [];
+  const linkless = LINKLESS_PROFILES.has(context.vhProfile);
+  if (linkless) for (const p of picks) p.links = [];
+  const disclosure = linkless
+    ? 'The packing picks open VoyageHacks buying guides, which carry Amazon affiliate links: VoyageHacks may earn a commission from qualifying purchases at no additional cost to the buyer.'
+    : DISCLOSURE;
   const packing = picks.length ? await tripPacking(context, lang, ans) : [];
   const q = new URLSearchParams({ m: ans.m, s: ans.s, b: ans.b, w: ans.w });
   if (origin) q.set('f', origin);
@@ -2328,7 +2332,7 @@ async function findDestination(context, args = {}) {
     ...p.links.map((l) => `   ${l.label}: ${l.url}`),
   ].join('\n'));
   return {
-    structured: { disclosure: DISCLOSURE, tripFinder, answers, picks, packing },
+    structured: { disclosure, tripFinder, answers, picks, packing },
     text: [
       picks.length ? `Three VoyageHacks picks for a ${ans.s} trip in ${label} (${ans.b} budget, ${ans.w}):`
         : ans.s === 'ski' ? `No ski area in the VoyageHacks guides is open in ${label}. The northern season runs roughly December to April, the southern one (New Zealand, Argentina) June to September.`
@@ -2339,8 +2343,8 @@ async function findDestination(context, args = {}) {
       '',
       `Same answers on the website: ${tripFinder}`,
       '',
-      DISCLOSURE,
-      LINK_NOTE,
+      disclosure,
+      ...(linkless ? [] : [LINK_NOTE]),
     ].join('\n'),
   };
 }
