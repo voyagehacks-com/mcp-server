@@ -29,8 +29,9 @@
  *
  * Affiliate IDs, the CJ region maps (13 regions: na, dach, cee, benelux, uk,
  * espt, mea, apac, au, br, latam, it, nordics), the CJ partner links
- * (params.cj.partners: getyourguide, vueling, budgetair, ihg, airserbia,
- * airindia, carla, hotelscom, undercovertourist) and the Amex links are
+ * (params.cj.partners: getyourguide, vueling, budgetair, ihg, nordvpn, airserbia,
+ * airindia, carla, hotelscom, undercovertourist, virginatlantic, epidemicsound,
+ * allegro) and the Amex links are
  * mirrored from hugo.yaml
  * (params.travelpayouts / params.cj.booking / params.cj.partners / params.amazon /
  * params.amex). This file is deployed as-is, not built by Hugo, so KEEP THEM
@@ -39,16 +40,22 @@
  * the articles' `products:` front matter (layouts/_default/index.gearjson.json).
  * search_articles reads Hugo's per-language search index (/<lang>/index.json).
  *
- * Content ships in 11 languages: en, de, fr, es, it, pl, cs, ja, nl, pt, zh
+ * Content ships in 10 languages: en, de, fr, es, it, pl, ja, nl, pt, zh
+ * (Czech was switched off 2026-10-03; its content stays in the repo)
  * (LANGS below is the single source of truth, and feeds every tool's `lang`
  * enum). Keep it in sync with hugo.yaml, functions/index.js LANGS and
  * static/.well-known/mcp/server-card.json.
  */
 
 import { htmlToMarkdown } from './html-to-markdown.js';
+// Trip Finder matching rules, shared with the website quiz (assets/js/trip-finder.js),
+// so /<lang>/trip-finder/ and find_destination always give the same three picks.
+import { MONTHS, TRIP_TYPES, BUDGETS, PARTIES, match as tripMatch, partnerKinds, adultsFor, tripDates, kayakTarget, bookingTarget } from '../assets/js/trip-match.mjs';
+// MCP Apps view (in-chat UI) for find_destination.
+import { TRIP_APP_URI, TRIP_APP_HTML, TRIP_APP_META } from './_mcp-app.js';
 
-const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
-const LANGS = ['en', 'de', 'fr', 'es', 'it', 'pl', 'cs', 'ja', 'nl', 'pt', 'zh'];
+const PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
+const LANGS = ['en', 'de', 'fr', 'es', 'it', 'pl', 'ja', 'nl', 'pt', 'zh'];
 const SITE = 'https://voyagehacks.com';
 
 // ── Affiliate configuration (mirror of hugo.yaml) ──────────────────────────
@@ -131,6 +138,18 @@ const CJ_PARTNERS = {
   // browser-verified), Carla Car Rental (Evergreen), Undercover Tourist
   // (Evergreen, discounted US theme-park tickets).
   airserbia: '15735227', carla: '17094338', undercovertourist: '15733832',
+  // 2026-09-20 export: NordVPN (CID 4837117). Not an Evergreen Link (the
+  // program ships none) but the "Nord VPN Deeplink" TEXT link, which CJ
+  // describes as a deep link and which was verified to pass ?url= through
+  // to go.nordvpn.net/aff_c with our sid as aff_sub4. Its click host is
+  // anrdoezrs.net, which is CJ_CLICK_BASE already.
+  nordvpn: '13914989',
+  // 2026-10-01 export: Virgin Atlantic Airways UK, Epidemic Sound and
+  // Allegro.pl, all Evergreen Links (curl-verified that day; CJ ids resolve on
+  // any CJ click host, so CJ_CLICK_BASE serves them). Only Virgin Atlantic is
+  // surfaced here (UK routes in get_flight_links); Allegro strips wrapped
+  // query strings, so it gets no deep links anywhere.
+  virginatlantic: '15735947', epidemicsound: '15735430', allegro: '15736846',
 };
 // Plain click-through TEXT links (NOT deep-link enabled: never append &url=,
 // a non-deep-link ad would drop the target). airindia = "Air India: Homepage";
@@ -140,59 +159,82 @@ function cjPartnerClickLink(partner, sid) {
   return `${CJ_CLICK_BASE}${CJ_CLICK_PARTNERS[partner]}?sid=${sid || 'mcp'}`;
 }
 
-// The site-wide Amazon tracking ID (owner decision 2026-08-03:
-// 'voyagehacks-20' everywhere, matching hugo.yaml's params.amazon.tag; the
-// old 'wajdikhattel-20' default is retired). Per-guide amazon_tag overrides
-// from gear.json still win per product. Matches the public mirror at
-// github.com/voyagehacks-com/mcp-server.
-const AMAZON_TAG = 'voyagehacks-20';
-const AMAZON_STOREFRONT = 'https://www.amazon.com/shop/divinediscoveriesforyou';
+// No Amazon links leave this server (2026-10-18). The Associates Program
+// Policies forbid displaying links that carry our tag "on a site that is not
+// your Site", and an MCP answer is displayed inside ChatGPT, Claude or another
+// host, never on voyagehacks.com. Gear picks therefore link to the product's
+// card on our own buying guide (#p-<asin>), where the reader clicks the Amazon
+// button on our Site. The ASIN is still returned as a plain identifier.
+const productAnchor = (guideUrl, asin) => `${guideUrl}#p-${String(asin).toLowerCase()}`;
 
-// params.amex: only de/en have per-product entries; everything else falls back
-// to the language's generic link, exactly like layouts/_partials/amex-url.html.
-const AMEX = {
-  de: {
-    platinum: 'https://americanexpress.com/de-de/referral/platinum?ref=wAJDIKaNdP&XLINK=MYCP',
-    gold: 'https://americanexpress.com/de-de/referral/gold?ref=wAJDIKaNdP&XLINK=MYCP',
-    // The Green Card was retired in Germany (2026); its successor "American
-    // Express Card" is not in the referral programme (the old /referral/green
-    // link renders an error page, verified 2026-08-18): plain product page.
-    green: 'https://www.americanexpress.com/de-de/kreditkarte/american-express-card/',
-    payback: 'https://americanexpress.com/de-de/referral/payback?ref=wAJDIKhChH',
-    blue: 'https://www.americanexpress.com/de-de/angebot-blue/s',
-    generic: 'https://www.americanexpress.com/de-de/kreditkarten/?ref=wAJDIKhChH',
-  },
-  en: { generic: 'https://www.americanexpress.com/' },
+// Stay22 Allez links (params.stay22.aid). Built server side with no API key;
+// `campaign` is reported in Stay22 and must use underscores (a hyphen splits
+// the label). Only named providers: the `roam` auto-pick is bot-walled and
+// the `booking` provider would compete with our own CJ Booking.com link.
+// Verified 2026-10-18: vrbo, expedia, hotelscom and agoda all 302 to the
+// partner with pubref/tag voyagehacks-<campaign>.
+const STAY22_AID = 'voyagehacks';
+function stay22Link(provider, { address, checkin, checkout, adults, children }, campaign) {
+  const p = new URLSearchParams({ aid: STAY22_AID, address });
+  if (checkin && checkout) { p.set('checkin', checkin); p.set('checkout', checkout); }
+  if (adults) p.set('adults', String(adults));
+  if (children) p.set('children', String(children));
+  p.set('campaign', campaign);
+  return `https://www.stay22.com/allez/${provider}?${p.toString()}`;
+}
+
+// EconomyBookings destination pages, the same targets the car-rental hub's
+// guide-cards use (content/en/car-rental/_index.md). Slugs are not derivable
+// from a city name, so only these are deep-linked; anything else gets the
+// EconomyBookings homepage.
+const EB_TARGETS = {
+  crete: 'https://www.economybookings.com/car-rental/europe/greece-crete-island',
+  iceland: 'https://www.economybookings.com/car-rental/europe/iceland',
+  lisbon: 'https://www.economybookings.com/car-rental/europe/portugal/lisbon',
+  mallorca: 'https://www.economybookings.com/car-rental/europe/spain-balearic-islands/majorca',
+  majorca: 'https://www.economybookings.com/car-rental/europe/spain-balearic-islands/majorca',
+  morocco: 'https://www.economybookings.com/car-rental/africa/morocco',
+  sicily: 'https://www.economybookings.com/car-rental/europe/italy/catania-sicily',
+  tenerife: 'https://www.economybookings.com/car-rental/europe/spain-canary-islands/tenerife',
+  algarve: 'https://www.economybookings.com/car-rental/europe/portugal/faro',
+  faro: 'https://www.economybookings.com/car-rental/europe/portugal/faro',
+  bali: 'https://www.economybookings.com/car-rental/asia/indonesia/bali',
 };
-// German Amex conditions, verified on americanexpress.com/de-de on 2026-08-18
+
+// No referral links leave this server (2026-10-18). The Amex Germany
+// Freundschaftswerbung terms allow referrals "ausschliesslich im privaten
+// Bereich" and forbid commercial use, and Revolut's referral terms limit
+// invites to people you know: a public API handing them to strangers breaks
+// both. get_credit_card_links therefore returns the issuers' own product pages
+// (no tracking) plus our guides. If an Amex/Revolut affiliate programme (e.g.
+// financeAds) is approved, its tracked links can go here.
+const AMEX_DE_PAGES = {
+  platinum: 'https://www.americanexpress.com/de-de/kreditkarte/platinum-card/',
+  gold: 'https://www.americanexpress.com/de-de/kreditkarte/goldcard/',
+  green: 'https://www.americanexpress.com/de-de/kreditkarte/american-express-card/',
+  payback: 'https://www.americanexpress.com/de-de/kreditkarte/payback-karte/',
+  blue: 'https://www.americanexpress.com/de-de/kreditkarte/blue-card/',
+};
+const REVOLUT_PLANS = 'https://www.revolut.com/our-pricing-plans/';
+// German Amex conditions, re-verified on americanexpress.com/de-de on 2026-09-13
 // (docs/amex-revolut-de-facts-2026-08.md is the source of truth). Returned by
 // get_credit_card_links for Germany so agents quote current numbers instead of
-// stale training data (Gold went from 144 EUR to 240 EUR/year, Green Card gone).
+// stale training data (Gold went from 144 EUR to 240 EUR/year, Green Card gone,
+// Platinum loses Lufthansa lounges on 2026-10-01).
 const AMEX_DE_FACTS = {
-  verified: '2026-08-18',
+  verified: '2026-09-13',
   currency: 'EUR',
   fx_fee: '2% on non-EUR transactions (all cards); ATM cash 4%, min 5 EUR',
+  changes_oct_2026: 'From 2026-10-01: Platinum loses Lufthansa lounge access worldwide (access until 2026-09-30); new Platinum "Lounge on the Go" 6 x 20 EUR airport vouchers at FRA T1 and MUC T2 (2026-10-01 to 2027-03-31, max one per day); Platinum LODENFREY credit (2 x 50 EUR per half-year) needs a purchase of at least 200 EUR and re-activation.',
   cards: {
-    platinum: { fee: '60 EUR/month = 720 EUR/year', public_welcome: 'up to 340 EUR statement credit (160 EUR after 6,000 EUR spend in 6 months + 180 EUR after a further 4,000 EUR)', referral_welcome: 'up to 85,000 Membership Rewards points (40,000 + 45,000, same spend thresholds)', credits: '650 EUR/year: 200 EUR travel (Amex Travel), 150 EUR dining, 200 EUR SIXT ride, 100 EUR shopping', perks: '1,550+ lounges (Priority Pass incl. one guest), hotel status upgrades, full travel insurance, up to 7 cards' },
-    gold: { fee: '20 EUR/month = 240 EUR/year (was 144 EUR until 2025; no free first year any more)', public_welcome: 'up to 200 EUR statement credit (80 EUR after 3,000 EUR + 120 EUR after a further 2,000 EUR in 6 months)', referral_welcome: 'up to 50,000 Membership Rewards points (20,000 + 30,000)', credits: 'up to ~370 EUR/year: up to 20 EUR/month SIXT+, 2x25 EUR SIXT rent, 5 EUR/month FREENOW, 2x40 EUR Lodenfrey', perks: 'metal card (Gold or Rose), travel insurance incl. family, GHA Discovery Gold, no lounge access' },
-    green: { fee: 'American Express Card (successor of the retired Green Card): 5 EUR/month = 60 EUR/year, waived from year 2 with 9,000 EUR annual spend', public_welcome: '40 EUR statement credit after 2,000 EUR spend in 6 months', referral_welcome: 'none (not in the referral programme)', credits: 'none', perks: 'Membership Rewards included, 1 point per EUR, one supplementary card' },
-    blue: { fee: '0 EUR', public_welcome: '25 EUR statement credit after 1,200 EUR spend in 6 months', referral_welcome: 'none', credits: 'none', perks: 'Membership Rewards optional at 30 EUR/year (+5,000 starter points); earns nothing without it' },
-    payback: { fee: '0 EUR', public_welcome: 'up to 3,000 PAYBACK bonus points', referral_welcome: '2,000 PAYBACK points for the first payment (promo, changes)', credits: 'none', perks: '1 PAYBACK point per 3 EUR (not at petrol stations) on top of partner points, points never expire, all supplementary cards free' },
+    platinum: { fee: '60 EUR/month = 720 EUR/year', public_welcome: 'up to 340 EUR statement credit (160 EUR after 6,000 EUR spend in 6 months + 180 EUR after a further 4,000 EUR)', credits: '650 EUR/year: 200 EUR travel (Amex Travel), 150 EUR dining, 200 EUR SIXT ride, 100 EUR LODENFREY (2 x 50 EUR, min. 200 EUR purchase from 2026-10-01)', perks: '1,550+ lounges (Global Lounge Collection incl. Priority Pass, one guest; Lufthansa lounges only until 2026-09-30), Lounge on the Go 6 x 20 EUR (FRA/MUC, Oct 2026 to Mar 2027), ALL Accor Gold, Hilton Honors Gold, Marriott Bonvoy Gold Elite, Condor/Marabu perks, full travel insurance, up to 7 cards' },
+    gold: { fee: '20 EUR/month = 240 EUR/year (was 144 EUR until 2025; no free first year any more)', public_welcome: 'up to 200 EUR statement credit (80 EUR after 3,000 EUR + 120 EUR after a further 2,000 EUR in 6 months)', credits: '430 EUR/year per Amex: 20 EUR/month SIXT+, 2x25 EUR SIXT rent, 5 EUR/month FREENOW, 2x40 EUR LODENFREY', perks: 'metal card (Gold or Rose), travel insurance incl. family, GHA Discovery Gold, no lounge access' },
+    green: { fee: 'American Express Card (successor of the retired Green Card): 5 EUR/month = 60 EUR/year; if annual spend exceeds 9,000 EUR the following year is free', public_welcome: '40 EUR statement credit after 2,000 EUR spend in 6 months', credits: 'none', perks: 'Membership Rewards included, 1 point per EUR, one supplementary card' },
+    blue: { fee: '0 EUR', public_welcome: '25 EUR statement credit after 1,200 EUR spend in 6 months', credits: 'none', perks: 'Membership Rewards optional at 30 EUR/year (+5,000 starter points); earns nothing without it' },
+    payback: { fee: '0 EUR (also sold as the dm PAYBACK American Express Karte, same 0 EUR and 1,000 bonus points)', public_welcome: '1,000 PAYBACK bonus points', credits: 'none', perks: '1 PAYBACK point per 3 EUR (not at petrol stations) on top of partner points, all supplementary cards free' },
   },
 };
 
-const AMEX_COUNTRIES = {
-  DE: 'https://www.americanexpress.com/de-de/kreditkarten/?ref=wAJDIKhChH',
-  US: 'https://www.americanexpress.com/us/credit-cards/',
-  AT: 'https://www.americanexpress.com/de-at/kreditkarten/',
-  FR: 'https://www.americanexpress.com/fr-fr/carte-de-paiement/types-cartes/cartes-proprietaires/',
-  GB: 'https://www.americanexpress.com/en-gb/credit-cards/',
-  CH: 'https://www.americanexpress.ch/de/karten/privatkunden-karten',
-  IT: 'https://www.americanexpress.com/it/carte-di-pagamento/',
-  ES: 'https://www.americanexpress.com/es/tarjetas/tarjetas-de-credito/',
-  JP: 'https://www.americanexpress.com/ja-jp/credit-cards/',
-  CA: 'https://www.americanexpress.com/en-ca/credit-cards/all-cards/',
-};
 
 // Affiliate disclosure. Shipped with every commercial response and named in
 // every commercial tool description: Amazon Associates, CJ and Travelpayouts
@@ -209,7 +251,19 @@ const LINK_NOTE =
   'These are ordinary traveler-facing search and product pages. No signup is required and ' +
   'the price is the same as going direct.';
 
-const SERVER_INFO = { name: 'voyagehacks', title: 'VoyageHacks', version: '2.1.0' };
+// Icons (spec 2025-11-25) for the server and every tool; hosts and directories show them.
+const ICONS = [
+  { src: 'https://voyagehacks.com/apple-touch-icon.png', mimeType: 'image/png', sizes: ['180x180'] },
+  { src: 'https://voyagehacks.com/favicon.svg', mimeType: 'image/svg+xml', sizes: ['any'] },
+];
+const SERVER_INFO = {
+  name: 'voyagehacks',
+  title: 'VoyageHacks',
+  version: '2.3.0',
+  description: 'Multilingual travel guides, destination ideas by month, travel gear picks and booking links.',
+  websiteUrl: 'https://voyagehacks.com/en/mcp-server/',
+  icons: ICONS,
+};
 
 // Tool profiles. The default profile exposes every tool. The "research"
 // profile (GET/POST /mcp?profile=research) drops the two tools whose links
@@ -238,12 +292,13 @@ const PROFILE_EXCLUDED = {
     'get_travel_vpn_links',
     'get_credit_card_links',
     'get_booking_links',
+    'find_destination',
   ]),
 };
 
 const INSTRUCTIONS =
   'VoyageHacks is a multilingual travel guide site with about 680 published guides in each of ' +
-  '11 languages (en, de, fr, es, it, pl, cs, ja, nl, pt, zh), covering flights, airline reviews, ' +
+  '10 languages (en, de, fr, es, it, pl, ja, nl, pt, zh), covering flights, airline reviews, ' +
   'hotels, destinations, car rental, trains, airport transfers, eSIM, travel VPN, travel credit ' +
   'cards, travel gear and month-by-month "where to go" guides.\n\n' +
   'What the tools provide, by topic:\n' +
@@ -252,7 +307,9 @@ const INSTRUCTIONS =
   'built from a trip description).\n' +
   '- Booking and shopping links: get_flight_links, get_hotel_links, get_car_rental_links, ' +
   'get_airport_transfer_links, get_esim_links, get_travel_vpn_links, get_credit_card_links, and ' +
-  'get_booking_links for several categories of one trip in a single call.\n\n' +
+  'get_booking_links for several categories of one trip in a single call.\n' +
+  '- Where to go: find_destination suggests three destinations from a month, a trip type, a budget ' +
+  'and who is travelling, with dated hotel and flight links (the site\'s trip finder).\n\n' +
   'Each vertical tool also returns up to four matching VoyageHacks guides in the requested ' +
   'language, with canonical URLs that can be cited as sources.\n\n' +
   'Scope and limits: the tools return published editorial content and search links. They do not ' +
@@ -264,7 +321,7 @@ const INSTRUCTIONS =
 // Served for ?profile=guides. Same corpus and the same gear catalog, no booking tools.
 const GUIDES_INSTRUCTIONS =
   'VoyageHacks is a multilingual travel guide site with about 680 published guides in each of ' +
-  '11 languages (en, de, fr, es, it, pl, cs, ja, nl, pt, zh), covering flights, airline reviews, ' +
+  '10 languages (en, de, fr, es, it, pl, ja, nl, pt, zh), covering flights, airline reviews, ' +
   'hotels, destinations, car rental, trains, airport transfers, eSIM, travel credit cards, ' +
   'travel gear and month-by-month "where to go" guides.\n\n' +
   'What the tools provide:\n' +
@@ -279,9 +336,9 @@ const GUIDES_INSTRUCTIONS =
   'send the reader to the guide rather than to a booking site.\n\n' +
   'The travel gear catalog is VoyageHacks\' own editorial selection, roughly 320 physical ' +
   'products picked across about 50 published buying guides. It is not a search of all of Amazon. ' +
-  'Product links are Amazon affiliate links: VoyageHacks may earn a commission at no additional ' +
-  'cost to the user, which should be disclosed when the links are presented. No authentication ' +
-  'is required.';
+  'Product links open the product on its VoyageHacks buying guide, which links to Amazon with ' +
+  'affiliate links: VoyageHacks may earn a commission at no additional cost to the user, which ' +
+  'should be disclosed when the products are presented. No authentication is required.';
 
 // ── Tool definitions ───────────────────────────────────────────────────────
 const LANG_PROP = {
@@ -323,16 +380,15 @@ const PRODUCT_SCHEMA = {
     badge: { type: 'string', description: 'Editorial label, e.g. "Best overall".' },
     whyThisOne: { type: 'string', description: 'The published reason this product was picked.' },
     asin: { type: 'string' },
-    buyUrl: { type: 'string', description: 'Amazon product page, carrying the VoyageHacks Associates tag.' },
-    source: { type: 'string', description: 'Always "amazon".' },
-    affiliate: { type: 'boolean', description: 'True: the buy link is an affiliate link.' },
+    productUrl: { type: 'string', description: 'The product on its VoyageHacks buying guide (#p-<asin>), where the Amazon buy button is.' },
+    retailer: { type: 'string', description: 'Where the product is sold. Always "Amazon".' },
     reviewGuide: {
       type: 'object',
       properties: { title: { type: 'string' }, url: { type: 'string' }, updated: { type: 'string' } },
       required: ['title', 'url'],
     },
   },
-  required: ['name', 'asin', 'buyUrl', 'source', 'affiliate', 'reviewGuide'],
+  required: ['name', 'asin', 'productUrl', 'retailer', 'reviewGuide'],
 };
 
 const LINKS_SCHEMA = {
@@ -443,15 +499,15 @@ export const TOOLS = [
       'universal travel adapters, GaN chargers, airline-compliant power banks, luggage trackers, neck ' +
       'pillows, earplugs and eye masks, toiletry and makeup bags, travel-size bottles, travel routers, ' +
       'translation earbuds and camping and outdoor gear. Each result returns the product name, its ' +
-      'category, the published reason it was picked, the guide that reviews it, its Amazon ASIN and a ' +
-      "link to the Amazon product page. Useful when a user asks which travel product to buy, or what " +
+      'category, the published reason it was picked, its Amazon ASIN and a link to the product on the ' +
+      "VoyageHacks buying guide that reviews it, where it can be bought on Amazon. Useful when a user asks which travel product to buy, or what " +
       'to pack for a trip and names a category or a destination. For a whole kit built from a trip ' +
       'description rather than one category, recommend_travel_gear is the matching tool. ' +
       'This is the VoyageHacks editorial catalog, not a search of all of Amazon: products outside the ' +
       'published guides are not findable here, and prices, star ratings, review counts and stock are ' +
-      'not available and are never returned. The Amazon links are affiliate links: VoyageHacks may ' +
+      'not available and are never returned. The guides carry Amazon affiliate links: VoyageHacks may ' +
       'earn a commission from qualifying purchases at no additional cost to the buyer, which should ' +
-      'be disclosed when the links are presented.',
+      'be disclosed when the products are presented.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -481,7 +537,8 @@ export const TOOLS = [
     description:
       'Turn a trip description into a packing and gear kit drawn from the VoyageHacks travel gear ' +
       'catalog: one product per category, each with the published reason it was picked, its Amazon ' +
-      'ASIN, a link to the Amazon product page and the guide that reviews it. Takes a plain-language ' +
+      'ASIN and a link to the product on the VoyageHacks guide that reviews it, where it can be bought ' +
+      'on Amazon. Takes a plain-language ' +
       'trip summary ("10 days in Japan in October, carry-on only, long-haul red-eye, working ' +
       'remotely") plus optional structured hints (destination, trip length in days, season, ' +
       'activities, luggage constraint, traveler type, budget), all of which are used to weight which ' +
@@ -490,9 +547,9 @@ export const TOOLS = [
       'editorial catalog, not a search of all of Amazon, and returns published picks only: prices, ' +
       'star ratings, review counts and stock are not available and are never returned, and it ' +
       'produces no clothing sizes and no itinerary. For one named product category, ' +
-      'search_travel_gear is narrower. The Amazon links ' +
-      'are affiliate links: VoyageHacks may earn a commission from qualifying purchases at no ' +
-      'additional cost to the buyer, which should be disclosed when the links are presented.',
+      'search_travel_gear is narrower. The guides carry Amazon ' +
+      'affiliate links: VoyageHacks may earn a commission from qualifying purchases at no ' +
+      'additional cost to the buyer, which should be disclosed when the products are presented.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -574,6 +631,7 @@ export const TOOLS = [
         vueling: { type: 'string' },
         airSerbia: { type: 'string' },
         airIndia: { type: 'string' },
+        virginAtlantic: { type: 'string' },
         guides: GUIDES_SCHEMA,
       },
       required: ['disclosure', 'flightSearch', 'guides'],
@@ -585,7 +643,8 @@ export const TOOLS = [
     annotations: { title: 'Get hotel search links for a city', ...READ_ONLY },
     description:
       'Build a Booking.com search link for a city or property, with optional check-in and check-out ' +
-      'dates, guest count and room count, plus an IHG brand search link (Holiday Inn, ' +
+      'dates, guest count and room count, the same search on Expedia, Vrbo (apartments and holiday ' +
+      'homes) and Agoda, plus an IHG brand search link (Holiday Inn, ' +
       'InterContinental, Crowne Plaza) and up to four VoyageHacks guides on the best areas and ' +
       'best-value stays there. The Booking.com link is regionalized to the traveler\'s country. Useful ' +
       'when a user asks where to stay, or about hotels, hostels or apartments in a place. It returns ' +
@@ -617,6 +676,7 @@ export const TOOLS = [
         children: { type: 'integer' },
         rooms: { type: 'integer' },
         hotelSearch: { type: 'string' },
+        moreStays: LINKS_SCHEMA,
         ihg: { type: 'string' },
         guides: GUIDES_SCHEMA,
       },
@@ -756,17 +816,16 @@ export const TOOLS = [
     title: 'Get travel credit card links',
     annotations: { title: 'Get travel credit card links', ...READ_ONLY },
     description:
-      "Return American Express application links for the traveler's country (Platinum, Gold, American " +
-      'Express Card, Payback and Blue where available), the current German fee and welcome-offer ' +
+      "Return the official American Express Germany card pages (Platinum, Gold, American Express Card, " +
+      'Payback and Blue) and the Revolut plans page, the current German fee and welcome-offer ' +
       'figures verified against americanexpress.com, and up to four VoyageHacks guides on points ' +
       'value, lounge access, foreign-transaction fees, Amex compared with Revolut and ' +
       'country-by-country availability. Useful when a user asks about travel rewards, points, miles, ' +
       'lounge access, which card to pay with abroad or foreign-transaction fees. It covers American ' +
       'Express only: it is not a comparison of all issuers, gives no eligibility or approval decision, ' +
       'no credit-score check and no application. Card terms change frequently and vary by market, so ' +
-      'figures should be attributed to the issuer page or the linked guide. Referral links: ' +
-      'VoyageHacks may earn a commission at no additional cost to the applicant, which should be ' +
-      'disclosed when the links are presented.',
+      'figures should be attributed to the issuer page or the linked guide. The card links are plain ' +
+      'issuer pages, not affiliate or referral links.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -831,6 +890,7 @@ export const TOOLS = [
         included: { type: 'array', items: { type: 'string' } },
         flights: { type: 'string' },
         hotels: { type: 'string' },
+        hotelsElsewhere: { type: 'string', description: 'The same hotel search on Expedia (via Stay22).' },
         airportTaxi: { type: 'string' },
         attractions: { type: 'string' },
         toursAndActivities: { type: 'string' },
@@ -843,6 +903,119 @@ export const TOOLS = [
       required: ['disclosure', 'included'],
     },
   },
+  {
+    name: 'find_destination',
+    title: 'Suggest where to travel for a month and trip type',
+    annotations: { title: 'Suggest where to travel for a month and trip type', ...READ_ONLY },
+    description:
+      'Suggest three destinations for a trip from five answers: the month (or "flexible"), the kind of ' +
+      'trip (beach, city break, hiking, ski, road trip, adventure or working remotely), the budget, who ' +
+      'is travelling and, optionally, the departure airport. Picks come only from VoyageHacks\' own ' +
+      'where-to-go month guides and travel-style lists, with the average high temperature each month ' +
+      'guide states, the reasons it fits, the destination guide to cite, and booking links for that trip: ' +
+      'hotels and flights dated in the chosen month, plus tours, car rental or an eSIM where they fit. ' +
+      'This is the same matching as the trip finder on voyagehacks.com. Useful when a user asks where ' +
+      'to go, for holiday ideas for a month, or for a destination that suits a family, a couple or a ' +
+      'budget. Each answer also carries three packing picks for that kind of trip, linked to the ' +
+      'VoyageHacks buying guides. When the month or the trip type is missing it returns no picks, only ' +
+      'the questions that are still open with their allowed answers (needsInput). ' +
+      'It does not return live prices or availability and cannot book. Affiliate links: ' +
+      'VoyageHacks may earn a commission at no additional cost to the traveler, which should be ' +
+      'disclosed when the links are presented.',
+    _meta: { ui: { resourceUri: TRIP_APP_URI }, 'ui/resourceUri': TRIP_APP_URI, 'openai/outputTemplate': TRIP_APP_URI, 'openai/widgetAccessible': true },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        month: { type: 'string', enum: [...MONTHS, 'flexible'], description: 'Travel month in English, lowercase, or "flexible" for the next two months.' },
+        trip_type: { type: 'string', enum: TRIP_TYPES, description: 'Kind of trip. "campervan" means a road trip; "digital-nomad" means working remotely.' },
+        budget: { type: 'string', enum: BUDGETS, description: 'Daily budget: budget (hostels, street food), mid (3-star) or luxury. Defaults to mid.' },
+        travelers: { type: 'string', enum: PARTIES, description: 'Who is travelling. Defaults to couple.' },
+        origin: { type: 'string', maxLength: 40, description: 'Departure IATA city or airport code for the flight links, e.g. LON. Optional.' },
+        country: COUNTRY_PROP,
+        lang: LANG_PROP,
+      },
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        disclosure: { type: 'string' },
+        tripFinder: { type: 'string', description: 'The same answers on the VoyageHacks trip finder page.' },
+        needsInput: {
+          type: 'array',
+          description: 'Present when month or trip_type was missing: the questions to ask, each with its allowed answers. No picks are returned until they are answered.',
+          items: {
+            type: 'object',
+            properties: { field: { type: 'string' }, question: { type: 'string' }, options: { type: 'array', items: { type: 'string' } }, required: { type: 'boolean' } },
+            required: ['field', 'question', 'options'],
+          },
+        },
+        answers: { type: 'object', description: 'The answers used: month, trip_type, budget, travelers, origin.' },
+        packing: {
+          type: 'array',
+          description: 'Three packing picks for this kind of trip, each linked to its VoyageHacks buying guide.',
+          items: PRODUCT_SCHEMA,
+        },
+        picks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              country: { type: ['string', 'null'] },
+              guide: { type: 'string' },
+              image: { type: ['string', 'null'], description: 'Photo of the destination on voyagehacks.com.' },
+              avgHighC: { type: ['number', 'null'] },
+              season: { type: 'string', description: 'in: the guides recommend this month; unknown: check the guide; out: outside the guide\'s sweet spot.' },
+              reasons: { type: 'array', items: { type: 'string' } },
+              links: LINKS_SCHEMA,
+            },
+            required: ['name', 'guide', 'reasons', 'links'],
+          },
+        },
+      },
+      required: ['disclosure', 'picks'],
+    },
+  },
+];
+for (const tool of TOOLS) tool.icons = ICONS;
+
+// Prompts: ready-made starting points that clients list as slash commands.
+// Each names the tool it leads to, so a profile that hides the tool hides it too.
+const PROMPTS = [
+  {
+    name: 'where_to_go',
+    title: 'Where should I travel?',
+    description: 'Destination ideas for a month and a kind of trip, from the VoyageHacks trip finder.',
+    tool: 'find_destination',
+    arguments: [
+      { name: 'month', description: 'Travel month, or "flexible".', required: false },
+      { name: 'trip_type', description: 'beach, city, hiking, ski, campervan, adventure or digital-nomad.', required: false },
+    ],
+    text: (a) => `Help me decide where to travel${a.month ? ` in ${a.month}` : ''}${a.trip_type ? ` for a ${a.trip_type} trip` : ''}. ` +
+      'Use the VoyageHacks find_destination tool; if it needs more answers, ask me its questions first. ' +
+      'Show the three picks with their guides and booking links.',
+  },
+  {
+    name: 'plan_trip',
+    title: 'Plan a trip',
+    description: 'Guides plus flight, hotel and activity links for one destination.',
+    tool: 'get_booking_links',
+    arguments: [
+      { name: 'destination', description: 'City or country, e.g. Lisbon.', required: true },
+      { name: 'days', description: 'Trip length in days.', required: false },
+    ],
+    text: (a) => `Plan a ${a.days ? `${a.days}-day ` : ''}trip to ${a.destination || 'my destination'}. ` +
+      'Use VoyageHacks search_articles for the best guides to cite, then get_booking_links for flights, hotels and things to do. ' +
+      'Ask me for dates and my departure airport if you need them.',
+  },
+  {
+    name: 'pack_for_trip',
+    title: 'What should I pack?',
+    description: 'A packing kit for a trip from the VoyageHacks buying guides.',
+    tool: 'recommend_travel_gear',
+    arguments: [{ name: 'trip', description: 'The trip in a sentence, e.g. "10 days in Japan in November, carry-on only".', required: true }],
+    text: (a) => `What should I pack for this trip: ${a.trip || '(ask me about the trip)'}? Use VoyageHacks recommend_travel_gear and link each pick to its guide.`,
+  },
 ];
 
 const RESOURCES = [
@@ -852,6 +1025,8 @@ const RESOURCES = [
   { uri: `${SITE}/.well-known/api-catalog`, name: 'api-catalog', title: 'API catalog (RFC 9727 linkset)', mimeType: 'application/linkset+json', path: '/.well-known/api-catalog' },
   { uri: `${SITE}/en/gear.json`, name: 'gear-catalog', title: 'Travel gear catalog (products + ASINs)', mimeType: 'application/json', path: '/en/gear.json' },
   { uri: `${SITE}/sitemap.xml`, name: 'sitemap', title: 'XML sitemap', mimeType: 'application/xml', path: '/sitemap.xml' },
+  // Served inline, not fetched: the in-chat trip finder view (MCP Apps).
+  { uri: TRIP_APP_URI, name: 'trip-finder-app', title: 'Trip finder view (MCP Apps)', mimeType: 'text/html;profile=mcp-app', inline: TRIP_APP_HTML, _meta: TRIP_APP_META },
 ];
 
 // ── Limits ─────────────────────────────────────────────────────────────────
@@ -951,10 +1126,12 @@ function pickLang(v) {
   return lang;
 }
 
-function amazonUrl(asin, tag) {
-  // tag = the guide's per-category Associates tracking ID from gear.json
-  // (amazon_tag front matter), so Amazon earnings map to a product category.
-  return `https://www.amazon.com/dp/${asin}/?tag=${tag || AMAZON_TAG}`;
+// Car rental for a place: the EconomyBookings destination page when we have
+// one (Travelpayouts deep link, same mechanics as tp-url.html's `target`).
+function carRentalLink(place) {
+  const key = clean(place, 60).toLowerCase().split(',')[0].trim();
+  const target = EB_TARGETS[key];
+  return target ? TP.economybookings.replace('u=https%3A%2F%2Fwww.economybookings.com%2F', `u=${encodeURIComponent(target)}`) : TP.economybookings;
 }
 
 function resolveRegion(context, countryArg, lang) {
@@ -1300,19 +1477,19 @@ function gearCategory(guide) {
 }
 
 function gearProduct(item) {
-  // Only fields the catalog actually carries. Amazon's Product Advertising
-  // API is not enabled for this account (params.amazon.paapi = false), so
-  // price, star rating, review count and stock do not exist here and are
-  // never invented: see the note in layouts/_default/index.gearjson.json.
+  // Only fields the catalog actually carries. Price, star rating, review
+  // count and stock are never invented, and are not fetched from the Amazon
+  // Creators API either: its license limits use to our own site (no
+  // redistribution to third parties) and caps stored data at 24 hours.
+  // See the note in layouts/_default/index.gearjson.json.
   return {
     name: item.name,
     category: item.category || undefined,
     badge: item.badge || undefined,
     whyThisOne: item.blurb,
     asin: item.asin,
-    buyUrl: amazonUrl(item.asin, item.tag),
-    source: 'amazon',
-    affiliate: true,
+    productUrl: productAnchor(item.guideUrl, item.asin),
+    retailer: 'Amazon',
     reviewGuide: {
       title: item.guideTitle,
       url: item.guideUrl,
@@ -1325,7 +1502,7 @@ function gearLines(products) {
   return products
     .map((p, i) => [
       `${i + 1}. ${p.name}${p.badge ? `, ${p.badge}` : ''}${p.category ? ` (${p.category})` : ''}`,
-      `   Buy: ${p.buyUrl}`,
+      `   See it and buy it (Amazon button on the VoyageHacks guide): ${p.productUrl}`,
       `   Why: ${p.whyThisOne}`,
       `   Full review: ${p.reviewGuide.url}`,
     ].join('\n'))
@@ -1360,15 +1537,14 @@ async function searchTravelGear(context, { query, lang = 'en', limit = 6 } = {})
       structured: { query, lang, hub: catalog.hub, productCount: 0, products: [], disclosure: DISCLOSURE },
       text:
         `No product in the VoyageHacks gear catalog matched "${query}". The catalog only covers products ` +
-        `picked in published buying guides: ${catalog.hub}\nVoyageHacks Amazon storefront: ` +
-        `${AMAZON_STOREFRONT}?tag=${AMAZON_TAG}\n\n${DISCLOSURE}`,
+        `picked in published buying guides: ${catalog.hub}\n\n${DISCLOSURE}`,
     };
   }
 
   return {
     structured: { query, lang, hub: catalog.hub, productCount: products.length, products, disclosure: DISCLOSURE },
     text: [
-      `${products.length} product(s) in the VoyageHacks gear catalog for "${query}". Each link is an Amazon product page.`,
+      `${products.length} product(s) in the VoyageHacks gear catalog for "${query}". Each link opens the product on its VoyageHacks buying guide, which links to Amazon.`,
       'The catalog carries no prices, star ratings or review counts.',
       '',
       gearLines(products),
@@ -1445,7 +1621,9 @@ const KIT_RULES = [
 
   // Toiletries and clothing
   { keys: ['best-hanging-toiletry-bags'], weight: 4, triggers: ['toiletries', 'toiletry', 'liquids', 'tsa', 'shampoo', 'hostel', 'carry-on', 'carry on', 'cabin'] },
-  { keys: ['best-travel-size-bottles'], weight: 4, triggers: ['toiletries', 'liquids', 'tsa', 'shampoo', 'skincare', 'carry-on', 'carry on', 'cabin', 'hand luggage'] },
+  /* Decanted liquids and solid bars solve the same 100 ml problem in opposite
+     ways, so they are substitutes: a kit gets one approach, not both. */
+  { keys: ['best-travel-size-bottles', 'best-solid-toiletries-for-travel'], weight: 4, triggers: ['toiletries', 'liquids', 'tsa', 'shampoo', 'conditioner', 'soap', 'deodorant', 'solid', 'bar', 'plastic-free', 'skincare', 'carry-on', 'carry on', 'cabin', 'hand luggage'] },
   { keys: ['best-travel-makeup-bags'], weight: 3, triggers: ['makeup', 'make-up', 'cosmetics', 'skincare', 'beauty', 'wedding'] },
   { keys: ['travel-steamers-dual-voltage'], weight: 3, triggers: ['business', 'suit', 'shirt', 'wedding', 'conference', 'formal', 'creases', 'wrinkles', 'iron'] },
 
@@ -1468,7 +1646,73 @@ const KIT_RULES = [
   { keys: ['hunting-trip-gear-checklist', 'crossbow-hunting-trip-guide'], weight: 6, triggers: ['hunt', 'hunting', 'crossbow', 'archery', 'bow', 'deer', 'elk'] },
   { keys: ['beach-vacation-packing-list'], weight: 5, triggers: ['beach', 'beaches', 'island', 'islands', 'coast', 'seaside', 'snorkel', 'snorkeling', 'swim', 'swimming', 'resort', 'maldives', 'caribbean'] },
 
+  // Cruises
+  /* The three cruise guides are substitutes: one cruise kit item, not three.
+     Cabin power and storage are the whole reason these pages exist, because the
+     lines disagree with each other about what is allowed on board. */
+  { keys: ['best-cruise-essentials', 'best-cruise-cabin-organizers', 'what-not-to-pack-on-a-cruise'], weight: 6, triggers: ['cruise', 'cruising', 'cruise ship', 'sailing', 'shore excursion', 'cabin', 'stateroom', 'port day', 'sea day', 'caribbean cruise', 'mediterranean cruise', 'alaska cruise'] },
+
+  // Weather, security and valuables
+  { keys: ['best-travel-umbrellas'], weight: 4, triggers: ['rain', 'rainy', 'rainy season', 'monsoon', 'wet season', 'umbrella', 'showers', 'downpour', 'storm', 'windy', 'england', 'scotland', 'ireland', 'vietnam', 'seattle'] },
+  { keys: ['best-tsa-luggage-locks'], weight: 3, triggers: ['lock', 'locks', 'padlock', 'tsa lock', 'security', 'theft', 'stolen', 'pilfering', 'hostel', 'dorm', 'checked bag', 'checked luggage'] },
+  { keys: ['best-travel-jewelry-cases'], weight: 3, triggers: ['jewelry', 'jewellery', 'rings', 'earrings', 'necklace', 'watch', 'valuables', 'wedding', 'engagement', 'heirloom'] },
+  { keys: ['best-anti-theft-travel-backpacks'], weight: 3, triggers: ['pickpocket', 'pickpockets', 'pickpocketing', 'anti theft', 'anti-theft', 'daypack', 'rome', 'barcelona', 'paris', 'crowded', 'city break', 'sightseeing'] },
+  { keys: ['best-travel-first-aid-kits'], weight: 3, triggers: ['first aid', 'first-aid', 'medicine', 'medication', 'medications', 'prescription', 'blisters', 'hiking', 'trekking', 'remote', 'backpacking', 'road trip', 'safari'] },
+
+  // Personal care
+  { keys: ['best-travel-hair-dryers'], weight: 3, triggers: ['hair dryer', 'hairdryer', 'blow dryer', 'hair', 'dual voltage', 'voltage', '230v', '220v', 'europe', 'uk', 'wedding'] },
+  { keys: ['best-kindle-for-travel'], weight: 3, triggers: ['kindle', 'e-reader', 'ereader', 'e-book', 'ebook', 'paperwhite', 'novel', 'novels'] },
+  { keys: ['voltage-converter-vs-travel-adapter'], weight: 3, triggers: ['voltage converter', 'converter', 'transformer', '110v', '120v', 'step down', 'step-down', 'cpap', 'curling iron', 'flat iron'] },
+  { keys: ['best-noise-cancelling-headphones-for-flying'], weight: 3, triggers: ['headphones', 'noise cancelling', 'noise canceling', 'earbuds', 'airpods', 'bose', 'engine noise', 'long haul', 'long-haul'] },
+
+  // Gifting
+  /* Both are gift round-ups, so they are substitutes. The tracker rule above
+     also answers 'gift', which is correct: a tracker is the gift most often
+     asked for, and KIT_CATEGORY keeps the kit to one item per rule anyway. */
+  { keys: ['travel-stocking-stuffers'], weight: 4, triggers: ['stocking', 'stocking stuffer', 'secret santa', 'christmas gift', 'small gift', 'under 25', 'stocking filler', 'advent'] },
+
+  { keys: ['travel-gifts-for-women'], weight: 4, triggers: ['gift for her', 'gifts for her', 'for her', 'wife', 'girlfriend', 'mom', 'mother', 'sister', 'gifts for women'] },
+  { keys: ['travel-gifts-for-men'], weight: 4, triggers: ['gift for him', 'gifts for him', 'for him', 'husband', 'boyfriend', 'dad', 'father', 'brother', 'gifts for men', 'frequent traveler', 'frequent flyer'] },
+  /* The two shopping-event guides are substitutes: whichever event is nearer. */
+  { keys: ['prime-day-travel-deals', 'black-friday-travel-deals'], weight: 3, triggers: ['prime day', 'prime big deal days', 'black friday', 'cyber monday', 'travel tuesday', 'deal', 'deals', 'sale', 'discount'] },
+
+  // Luggage and warmth
+  { keys: ['best-luggage-sets'], weight: 4, triggers: ['luggage set', 'suitcase set', 'set of suitcases', 'checked luggage', 'family trip', 'long trip', 'moving abroad', 'two weeks', 'three weeks'] },
+  { keys: ['best-weekender-bags'], weight: 4, triggers: ['weekend', 'weekender', 'duffel', 'duffle', 'overnight', 'long weekend', 'short trip', 'two nights', '2 nights'] },
+  // Q4c gear wave (2026-10-12)
+  { keys: ['best-airplane-bluetooth-transmitters'], weight: 4, triggers: ['airfly', 'bluetooth adapter', 'bluetooth transmitter', 'seatback screen', 'seat-back screen', 'in-flight entertainment', 'wireless headphones on plane', 'airpods on plane'] },
+  { keys: ['best-airplane-phone-holders'], weight: 3, triggers: ['phone holder', 'phone mount', 'tablet holder', 'tray table', 'watch movies on plane', 'ipad on plane'] },
+  { keys: ['best-packable-travel-blankets'], weight: 3, triggers: ['travel blanket', 'packable blanket', 'puffy blanket', 'cold plane', 'cold flight', 'airplane blanket'] },
+  { keys: ['best-luggage-covers'], weight: 3, triggers: ['luggage cover', 'suitcase cover', 'suitcase protector', 'scratches', 'checked luggage damage'] },
+  { keys: ['best-foldable-duffel-bags'], weight: 3, triggers: ['foldable duffel', 'packable duffel', 'extra bag', 'souvenirs', 'shopping trip', 'bring gifts home', 'spare bag'] },
+  { keys: ['best-kids-luggage'], weight: 4, triggers: ['kids luggage', 'kids suitcase', 'ride-on suitcase', 'trunki', 'children', 'kids', 'family trip', 'toddler'] },
+  { keys: ['best-microfiber-travel-towels'], weight: 3, triggers: ['travel towel', 'microfiber towel', 'quick dry towel', 'hostel', 'hostels', 'backpacking', 'beach towel'] },
+  { keys: ['best-collapsible-travel-kettles'], weight: 3, triggers: ['travel kettle', 'collapsible kettle', 'tea', 'instant noodles', 'boil water', 'no kettle in room'] },
+  { keys: ['best-heated-travel-blankets'], weight: 3, triggers: ['heated blanket', 'blanket', 'cold', 'freezing', 'chilly', 'winter road trip', 'stadium', 'cold hotel', 'overnight train'] },
+
+  { keys: ['best-belt-bags-for-travel'], weight: 3, triggers: ['belt bag', 'fanny pack', 'bum bag', 'hip pack', 'sling', 'crossbody', 'pickpocket', 'city break', 'theme park', 'festival'] },
+  { keys: ['best-magsafe-travel-chargers'], weight: 3, triggers: ['magsafe', 'wireless charger', 'qi2', 'apple watch', 'airpods', 'iphone charger', '3 in 1 charger', 'charging stand'] },
+  { keys: ['best-garment-bags'], weight: 4, triggers: ['garment bag', 'suit', 'suits', 'wedding', 'wedding guest', 'dress', 'gown', 'tuxedo', 'business trip', 'conference', 'formal'] },
+  { keys: ['best-luggage-tags'], weight: 2, triggers: ['luggage tag', 'bag tag', 'name tag', 'lost luggage', 'checked bag', 'identify my bag'] },
+
+  { keys: ['best-travel-pants'], weight: 3, triggers: ['pants', 'trousers', 'what to wear on a plane', 'long flight outfit', 'business trip', 'hiking pants'] },
+  { keys: ['best-travel-journals'], weight: 2, triggers: ['journal', 'diary', 'notebook', 'scrapbook', 'sketch', 'honeymoon', 'gap year'] },
+  { keys: ['best-travel-water-bottles'], weight: 3, triggers: ['water bottle', 'tap water', 'drinking water', 'filter', 'purifier', 'safe water', 'hiking', 'india', 'mexico', 'peru', 'morocco', 'vietnam'] },
+  { keys: ['best-travel-tripods'], weight: 3, triggers: ['tripod', 'photography', 'photos', 'night photography', 'northern lights', 'aurora', 'long exposure', 'vlog', 'timelapse'] },
+  { keys: ['best-travel-toothbrushes'], weight: 2, triggers: ['toothbrush', 'electric toothbrush', 'toiletries', 'dental'] },
+
   // Travelling with others
+  { keys: ['best-travel-strollers-and-cribs'], weight: 5, triggers: ['stroller', 'pram', 'pushchair', 'buggy', 'travel crib', 'crib', 'cot', 'pack n play', 'baby', 'infant', 'newborn', 'toddler', 'gate check'] },
+  { keys: ['best-kids-travel-headphones'], weight: 4, triggers: ['kids', 'children', 'child', 'family', 'tablet', 'ipad', 'kids headphones', 'school holidays'] },
+  { keys: ['best-travel-car-seats'], weight: 4, triggers: ['car seat', 'car seats', 'booster', 'infant seat', 'rental car with kids', 'baby', 'toddler', 'faa approved', 'taxi with kids', 'road trip with kids'] },
+
+  // Winter clothing (Q4 2026 wave). Gloves, jackets, base layers and boots are
+  // different layers, not substitutes, so each is its own rule.
+  { keys: ['best-heated-gloves-for-travel'], weight: 4, triggers: ['gloves', 'heated gloves', 'cold hands', 'raynaud', 'freezing', 'sub-zero', 'lapland', 'northern lights', 'christmas market', 'christmas markets', 'skiing', 'winter'] },
+  { keys: ['best-packable-down-jackets'], weight: 4, triggers: ['down jacket', 'puffer', 'packable jacket', 'winter jacket', 'cold', 'freezing', 'iceland', 'norway', 'lapland', 'christmas market', 'winter', 'carry-on winter'] },
+  { keys: ['best-thermal-base-layers-for-travel'], weight: 4, triggers: ['base layer', 'base layers', 'thermal', 'thermals', 'merino', 'long johns', 'freezing', 'sub-zero', 'northern lights', 'skiing', 'winter'] },
+  { keys: ['best-winter-boots-for-travel'], weight: 4, triggers: ['boots', 'winter boots', 'snow boots', 'snow', 'ice', 'icy', 'slush', 'lapland', 'iceland', 'christmas market', 'winter city break'] },
+  { keys: ['best-travel-crossbody-bags'], weight: 3, triggers: ['crossbody', 'cross-body', 'shoulder bag', 'small bag', 'phone bag', 'pickpocket', 'city break', 'sightseeing', 'paris', 'rome', 'barcelona'] },
   { keys: ['flying-with-a-toddler'], weight: 6, triggers: ['toddler', 'baby', 'infant', 'children', 'kids', 'family', 'child'] },
   { keys: ['flying-with-a-dog'], weight: 6, triggers: ['dog', 'puppy', 'pet', 'pets', 'cat', 'animal'] },
 ];
@@ -1632,6 +1876,8 @@ async function getFlightLinks(context, args = {}) {
   const touches = (codes) => codes.includes(origin) || codes.includes(dest);
   const airSerbia = touches(['BEG', 'INI']) ? cjPartnerLink('airserbia', 'https://www.airserbia.com/en', 'mcp-flights') : null;
   const airIndia = touches(INDIA_GATEWAYS) ? cjPartnerClickLink('airindia', 'mcp-flights') : null;
+  // Virgin Atlantic (2026-10-01 CJ program, UK-targeted): routes from its UK bases.
+  const virginAtlantic = touches(['LON', 'LHR', 'LGW', 'MAN']) ? cjPartnerLink('virginatlantic', 'https://www.virginatlantic.com/en-GB', 'mcp-flights') : null;
   const query = [clean(args.destination), clean(args.origin)].filter(Boolean).join(' ');
   const guides = await findGuides(context, lang, ['flights', 'airlines', 'destinations'], query, 4);
 
@@ -1645,6 +1891,7 @@ async function getFlightLinks(context, args = {}) {
     vueling,
     ...(airSerbia ? { airSerbia } : {}),
     ...(airIndia ? { airIndia } : {}),
+    ...(virginAtlantic ? { virginAtlantic } : {}),
     guides,
   };
 
@@ -1656,6 +1903,7 @@ async function getFlightLinks(context, args = {}) {
         { label: 'Compare fares (Booking.com Flights)', url: search },
         ...(airSerbia ? [{ label: 'Book direct with Air Serbia (Belgrade hub)', url: airSerbia }] : []),
         ...(airIndia ? [{ label: 'Book direct with Air India', url: airIndia }] : []),
+        ...(virginAtlantic ? [{ label: 'Book direct with Virgin Atlantic (London/Manchester)', url: virginAtlantic }] : []),
         { label: 'Budget fares within Europe (Vueling)', url: vueling },
         { label: 'Delayed or cancelled flight compensation (AirHelp)', url: TP.airhelp },
       ],
@@ -1680,13 +1928,22 @@ async function getHotelLinks(context, args = {}) {
   const ihgTarget = city ? `https://www.ihg.com/hotels/us/en/find-hotels/hotel-search?qDest=${encodeURIComponent(city)}` : 'https://www.ihg.com/';
   const ihg = cjPartnerLink('ihg', ihgTarget, 'mcp-hotels');
   const guides = await findGuides(context, lang, ['hotels', 'destinations'], city, 4);
+  // Other booking sites for the same search, through Stay22. Only with a city:
+  // Allez needs an address to search.
+  const stay = { address: city, checkin, checkout, adults, children };
+  const moreStays = city ? [
+    { label: 'Compare the same dates on Expedia', url: stay22Link('expedia', stay, 'mcp_hotels') },
+    { label: 'Apartments and holiday homes (Vrbo)', url: stay22Link('vrbo', stay, 'mcp_hotels') },
+    { label: 'Hotels on Agoda (strongest in Asia)', url: stay22Link('agoda', stay, 'mcp_hotels') },
+  ] : [];
 
   return {
-    structured: { disclosure: DISCLOSURE, region, city: city || null, checkin: checkin || null, checkout: checkout || null, adults, children, rooms, hotelSearch: url, ihg, guides },
+    structured: { disclosure: DISCLOSURE, region, city: city || null, checkin: checkin || null, checkout: checkout || null, adults, children, rooms, hotelSearch: url, ihg, moreStays, guides },
     text: bookingResponse({
       heading: `Hotel search on Booking.com${city ? `: ${city}` : ''}${checkin && checkout ? `, ${checkin} to ${checkout}` : ''} (${adults} adult(s)${children ? `, ${children} child(ren)` : ''}, ${rooms} room(s)):`,
       links: [
         { label: 'Search stays (Booking.com, free cancellation on most rooms)', url },
+        ...moreStays,
         { label: 'IHG hotel brands: Holiday Inn, InterContinental, Crowne Plaza', url: ihg },
       ],
       guides,
@@ -1701,7 +1958,7 @@ async function getCarRentalLinks(context, args = {}) {
   const guides = await findGuides(context, lang, ['car-rental', 'destinations'], where, 4);
 
   const links = [
-    { label: 'Compare rental prices worldwide (EconomyBookings)', url: TP.economybookings },
+    { label: 'Compare rental prices worldwide (EconomyBookings)', url: carRentalLink(where) },
     { label: 'Compare rental prices worldwide (QEEQ)', url: TP.qeeq },
     { label: 'Local suppliers, lower deposits, S. Europe, Balkans, Georgia, Asia (Localrent)', url: TP.localrent },
     { label: 'Local suppliers with delivery to your hotel (GetRentacar)', url: TP.getrentacar },
@@ -1780,11 +2037,14 @@ async function getEsimLinks(context, args = {}) {
 async function getTravelVpnLinks(context, args = {}) {
   const lang = pickLang(args.lang);
   const guides = await findGuides(context, lang, ['vpn'], 'travel vpn', 4);
+  // NordVPN through CJ since 2026-09-20 (TP.vpn, the refer-nordvpn.com
+  // referral, is the fallback only: it pays in free months, not cash).
+  const vpn = cjPartnerLink('nordvpn', 'https://nordvpn.com/', 'mcp-vpn');
   return {
-    structured: { disclosure: DISCLOSURE, vpn: TP.vpn, guides },
+    structured: { disclosure: DISCLOSURE, vpn, guides },
     text: bookingResponse({
       heading: 'Travel VPN: for hotel/airport Wi-Fi, banking abroad and home streaming:',
-      links: [{ label: 'NordVPN', url: TP.vpn }],
+      links: [{ label: 'NordVPN', url: vpn }],
       guides,
     }),
   };
@@ -1796,39 +2056,34 @@ async function getCreditCardLinks(context, args = {}) {
   const country = (clean(args.country).toUpperCase() || cfCountry).slice(0, 2);
   const card = clean(args.card).toLowerCase();
 
-  const byLang = AMEX[lang] || AMEX.en;
-  const countryUrl = AMEX_COUNTRIES[country] || '';
-  const generic = countryUrl || byLang.generic || AMEX.en.generic;
-
   const links = [];
-  if (card && byLang[card]) {
-    links.push({ label: `American Express ${card[0].toUpperCase()}${card.slice(1)}`, url: byLang[card] });
-  } else if (byLang.platinum) {
-    links.push({ label: 'American Express Platinum', url: byLang.platinum });
-    links.push({ label: 'American Express Gold', url: byLang.gold });
-    links.push({ label: 'American Express Card (formerly Green Card)', url: byLang.green });
-    if (byLang.payback) links.push({ label: 'American Express Payback', url: byLang.payback });
-    if (byLang.blue) links.push({ label: 'American Express Blue', url: byLang.blue });
+  const names = { platinum: 'American Express Platinum', gold: 'American Express Gold', green: 'American Express Card (formerly Green)', payback: 'PAYBACK American Express (no fee)', blue: 'American Express Blue (no fee)' };
+  for (const k of card && AMEX_DE_PAGES[card] ? [card] : ['platinum', 'gold', 'payback']) {
+    links.push({ label: `${names[k]}: official page (Germany)`, url: AMEX_DE_PAGES[k] });
   }
-  links.push({ label: `All American Express cards${country ? ` (${country})` : ''}`, url: generic });
+  links.push({ label: 'Revolut plans and prices: official page', url: REVOLUT_PLANS });
+  const residency = country && country !== 'DE'
+    ? `\nThe American Express pages are German cards: Amex only accepts applications with a residential address in Germany, so do not present them as ${country} offers.\n`
+    : '';
 
   const guides = await findGuides(context, lang, ['credit-cards'], `${card} ${country}`.trim(), 4);
 
-  const facts = (country === 'DE' || (!country && lang === 'de')) ? AMEX_DE_FACTS : null;
+  const facts = AMEX_DE_FACTS;
   const factLines = facts
     ? Object.entries(facts.cards)
         .filter(([k]) => !card || k === card)
-        .map(([k, f]) => `- ${k}: ${f.fee}; welcome: ${f.public_welcome}; via referral: ${f.referral_welcome}; credits: ${f.credits}. ${f.perks}.`)
+        .map(([k, f]) => `- ${k}: ${f.fee}; welcome offer: ${f.public_welcome}; credits: ${f.credits}. ${f.perks}.`)
         .concat([`- FX: ${facts.fx_fee}. Verified ${facts.verified}.`])
     : [];
 
   return {
     structured: { disclosure: DISCLOSURE, country: country || null, card: card || null, cards: links, guides, facts },
     text: bookingResponse({
-      heading: `Travel credit cards${country ? ` available in ${country}` : ''}:`,
+      heading: 'Travel credit cards: American Express Germany and Revolut (official pages, not affiliate links):',
       links,
       guides,
       extra:
+        residency +
         (factLines.length ? `\nGermany conditions (verified ${facts.verified} on americanexpress.com/de-de):\n${factLines.join('\n')}\n` : '') +
         '\nCard terms, fees and welcome offers change frequently and differ by market. The figures above are the ' +
         'ones VoyageHacks verified on the issuer site on the date shown; anything not listed here should be ' +
@@ -1875,13 +2130,14 @@ async function getBookingLinks(context, args = {}) {
   }
   if (want('hotels')) {
     links.hotels = cjLink(region, 'deeplink', bookingSearchUrl({ city, checkin: depart, checkout: ret, adults, rooms: 1 }), 'mcp-trip');
+    if (city) links.hotelsElsewhere = stay22Link('expedia', { address: city, checkin: depart, checkout: ret, adults }, 'mcp_trip');
   }
   if (want('airport_taxi')) links.airportTaxi = cjLink(region, 'taxis', 'https://www.booking.com/taxi/index.html', 'mcp-trip');
   if (want('attractions')) links.attractions = cjRegionLink(region, 'attractions', 'mcp-trip');
   if (want('tours')) links.toursAndActivities = cjPartnerLink('getyourguide', toursTarget, 'mcp-trip');
-  if (want('car_rental')) links.carRental = TP.economybookings;
+  if (want('car_rental')) links.carRental = carRentalLink(city || clean(args.destination));
   if (want('esim')) links.esim = TP.airalo;
-  if (want('vpn')) links.vpn = TP.vpn;
+  if (want('vpn')) links.vpn = cjPartnerLink('nordvpn', 'https://nordvpn.com/', 'mcp-trip');
   if (want('travel_gear')) links.travelGear = `${SITE}/${lang}/travel-gear/`;
 
   // Destination guides for the trip, so the bundle can be cited as well as clicked.
@@ -1891,6 +2147,7 @@ async function getBookingLinks(context, args = {}) {
   const rows = [
     links.flights && `Flights (Booking.com${origin && dest ? `, ${origin} to ${dest}` : ''}${dated ? `, ${dated}` : ''}): ${links.flights}`,
     links.hotels && `Hotels (Booking.com${city ? `, ${city}` : ''}${dated ? `, ${dated}` : ''}, ${adults} adult(s)): ${links.hotels}`,
+    links.hotelsElsewhere && `Same hotel search on Expedia: ${links.hotelsElsewhere}`,
     links.airportTaxi && `Airport taxi (Booking.com Taxis): ${links.airportTaxi}`,
     links.attractions && `Attractions and things to do (Booking.com): ${links.attractions}`,
     links.toursAndActivities && `Tours and activities (GetYourGuide${city ? `, ${city}` : ''}): ${links.toursAndActivities}`,
@@ -1916,11 +2173,162 @@ async function getBookingLinks(context, args = {}) {
   return { structured: links, text };
 }
 
+// ── find_destination (the website trip finder, same data and rules) ─────────
+// Data: the JSON block Hugo inlines in /<lang>/trip-finder/ (built from
+// month_picks.yaml, styles.yaml, dest-iata.yaml, trip_seasons.yaml).
+const tripCache = new Map();
+async function loadTripData(context, lang) {
+  if (tripCache.has(lang)) return tripCache.get(lang);
+  const res = await fetchAsset(context, `/${lang}/trip-finder/`);
+  if (!res.ok) throw toolFailure(`The trip finder data for "${lang}" is unavailable (HTTP ${res.status}). Try lang "en".`);
+  const m = (await res.text()).match(/id=["']?tf-data["']?>([\s\S]*?)<\/script>/);
+  if (!m) throw toolFailure('The trip finder data block is missing.');
+  const data = JSON.parse(m[1]);
+  if (tripCache.size >= LIMITS.langCache) tripCache.delete(tripCache.keys().next().value);
+  tripCache.set(lang, data);
+  return data;
+}
+
+const TRIP_REASON = {
+  style: { beach: 'great beaches', city: 'a top city break', hiking: 'great hiking', ski: 'a ski destination', campervan: 'a road-trip favourite', adventure: 'built for adventure', 'digital-nomad': 'a remote-work base' },
+  budget: 'good value', luxury: 'great for a splurge', solo: 'easy solo', family: 'family friendly',
+};
+
+// Packing picks per trip type: gear-catalog translationKeys (identical in every
+// language), first product of each guide. A key missing from a language's
+// catalog is skipped. Families swap the last pick for kids' headphones.
+const TRIP_GEAR = {
+  beach: ['beach-vacation-packing-list', 'best-microfiber-travel-towels', 'best-travel-water-bottles'],
+  city: ['best-anti-theft-travel-backpacks', 'best-travel-power-banks', 'travel-adapters-2026'],
+  hiking: ['hiking-trip-essentials', 'best-travel-water-bottles', 'best-packable-down-jackets'],
+  ski: ['ski-trip-packing-list', 'best-thermal-base-layers-for-travel', 'best-heated-gloves-for-travel'],
+  campervan: ['campervan-road-trip-tips', 'camping-trip-packing-list', 'best-travel-power-banks'],
+  adventure: ['best-travel-first-aid-kits', 'best-travel-water-bottles', 'best-travel-cameras'],
+  'digital-nomad': ['best-travel-routers', 'best-portable-travel-monitors', 'best-gan-wall-chargers-for-travel'],
+};
+
+async function tripPacking(context, lang, ans) {
+  const keys = [...(TRIP_GEAR[ans.s] || [])];
+  if (ans.w === 'family' && keys.length) keys[keys.length - 1] = 'best-kids-travel-headphones';
+  let catalog;
+  try { catalog = await loadGear(context, lang); } catch { return []; }
+  const used = new Set();
+  const out = [];
+  for (const key of keys) {
+    const item = catalog.items.find((i) => i.guideKey === key && !used.has(i.asin));
+    if (!item) continue;
+    used.add(item.asin);
+    out.push(gearProduct(item));
+  }
+  return out;
+}
+
+// The questions find_destination needs, in the order a person would ask them.
+const TRIP_QUESTIONS = [
+  { field: 'month', question: 'When do you want to travel? A month, or "flexible" for the next two months.', options: [...MONTHS, 'flexible'], required: true },
+  { field: 'trip_type', question: 'What kind of trip: beach, city break, hiking, ski, road trip (campervan), adventure or working remotely (digital-nomad)?', options: TRIP_TYPES, required: true },
+  { field: 'budget', question: 'What daily budget: budget (hostels, street food), mid (3-star) or luxury?', options: BUDGETS, required: false },
+  { field: 'travelers', question: 'Who is going: solo, couple, family or friends?', options: PARTIES, required: false },
+  { field: 'origin', question: 'Which city or airport would you fly from (IATA code, e.g. LON)? Optional.', options: [], required: false },
+];
+
+async function findDestination(context, args = {}) {
+  const lang = pickLang(args.lang);
+  const month = clean(args.month, 20).toLowerCase();
+  const ans = {
+    m: month === 'flexible' ? 'flex' : month,
+    s: clean(args.trip_type, 20).toLowerCase(),
+    b: BUDGETS.includes(clean(args.budget, 20)) ? clean(args.budget, 20) : 'mid',
+    w: PARTIES.includes(clean(args.travelers, 20)) ? clean(args.travelers, 20) : 'couple',
+  };
+  const origin = iata(args.origin);
+  const answers = { month: month || null, trip_type: ans.s || null, budget: ans.b, travelers: ans.w, origin: origin || null };
+
+  // Missing essentials: hand back the questions rather than an error, so the
+  // assistant asks the traveler in chat (or the trip-finder UI shows its form).
+  const missing = [];
+  if (!month) missing.push('month');
+  if (!ans.s) missing.push('trip_type');
+  if (missing.length) {
+    const needsInput = TRIP_QUESTIONS.filter((q) => missing.includes(q.field) || (!q.required && args[q.field] === undefined));
+    return {
+      structured: { disclosure: DISCLOSURE, needsInput, answers, picks: [] },
+      text: [
+        `Destination picks need ${missing.length === 2 ? 'two answers' : 'one answer'} that ${missing.length === 2 ? 'were' : 'was'} not given:`,
+        ...needsInput.filter((q) => q.required).map((q) => `- ${q.question}`),
+        'Optional, if they have not said:',
+        ...needsInput.filter((q) => !q.required).map((q) => `- ${q.question}`),
+      ].join('\n'),
+    };
+  }
+  if (ans.m !== 'flex' && !MONTHS.includes(ans.m)) throw invalidParams('month must be a lowercase English month name or "flexible".');
+  if (!TRIP_TYPES.includes(ans.s)) throw invalidParams(`trip_type must be one of: ${TRIP_TYPES.join(', ')}.`);
+  const region = resolveRegion(context, args.country, lang);
+  const D = await loadTripData(context, lang);
+  const now = new Date();
+  const dates = tripDates(ans.m, now);
+  const adults = adultsFor(ans.w);
+  // Families: 2 adults + 2 children, so Booking.com and Vrbo show family
+  // rooms instead of doubles. Booking asks for the children's ages on arrival.
+  const children = ans.w === 'family' ? 2 : 0;
+  const party = `${adults} adult${adults > 1 ? 's' : ''}${children ? ` + ${children} children` : ''}`;
+  const picks = tripMatch(D, ans, now).map((c) => {
+    const pl = D.places[c.p];
+    const reasons = c.why.map((w) => (w.k === 'warm' ? `warm in ${w.m[0].toUpperCase()}${w.m.slice(1)}` : w.k === 'style' ? TRIP_REASON.style[w.s] : TRIP_REASON[w.k])).filter(Boolean);
+    const address = pl.c ? `${pl.q}, ${pl.c}` : pl.q;
+    const stay = { address, checkin: dates[0], checkout: dates[1], adults, children };
+    const links = [];
+    for (const k of partnerKinds(c.p, ans)) {
+      if (k === 'hotels') {
+        links.push({ label: `Hotels in ${pl.q}, ${dates[0]} to ${dates[1]}, ${party} (Booking.com)`, url: cjLink(region, 'deeplink', bookingTarget(pl.q, dates, adults) + (children ? `&group_children=${children}` : ''), 'mcp-trip-finder') });
+        // One alternative per pick, chosen for the trip: holiday homes for
+        // families, Agoda in Asia, Expedia otherwise.
+        const alt = ans.w === 'family' ? ['vrbo', 'Holiday homes and apartments (Vrbo)']
+          : c.p.indexOf('asia/') === 0 ? ['agoda', 'Hotels on Agoda']
+            : ['expedia', 'Compare hotels on Expedia'];
+        links.push({ label: `${alt[1]} in ${pl.q}, same dates`, url: stay22Link(alt[0], stay, 'mcp_trip_finder') });
+      }
+      if (k === 'flights') links.push({ label: origin && pl.a ? `Flights ${origin} to ${pl.a}, ${dates[0]} to ${dates[1]}` : 'Flight search (Booking.com Flights)', url: cjLink(region, 'deeplink', kayakTarget(origin, pl.a, dates, adults), 'mcp-trip-finder') });
+      if (k === 'tours') links.push({ label: `Tours and activities in ${pl.q} (GetYourGuide)`, url: cjPartnerLink('getyourguide', `https://www.getyourguide.com/s/?q=${encodeURIComponent(pl.q)}`, 'mcp-trip-finder') });
+      if (k === 'cars') links.push({ label: `Car rental${carRentalLink(pl.q) !== TP.economybookings ? ` in ${pl.q}` : ' comparison'} (EconomyBookings)`, url: carRentalLink(pl.q) });
+      if (k === 'esim') links.push({ label: 'Travel eSIM (Airalo)', url: TP.airalo });
+    }
+    if (c.pricey) reasons.push(`pricier than a ${ans.b === 'budget' ? 'budget' : 'mid-range'} trip`);
+    return { name: pl.n, country: pl.c || null, guide: `${SITE}${pl.u}`, image: pl.i ? `${SITE}${pl.i}` : null, avgHighC: c.high, season: c.fit, costLevel: c.cost, reasons, links };
+  });
+  const packing = picks.length ? await tripPacking(context, lang, ans) : [];
+  const q = new URLSearchParams({ m: ans.m, s: ans.s, b: ans.b, w: ans.w });
+  if (origin) q.set('f', origin);
+  const tripFinder = `${SITE}/${lang}/trip-finder/?${q.toString()}`;
+  const label = ans.m === 'flex' ? 'the next two months' : ans.m[0].toUpperCase() + ans.m.slice(1);
+  const lines = picks.map((p, i) => [
+    `${i + 1}. ${p.name}${p.country ? `, ${p.country}` : ''}: ${p.reasons.join(', ')}` +
+      (p.avgHighC != null ? ` (average high ${p.avgHighC} °C, from the VoyageHacks month guide)` : p.season === 'in' ? ' (the destination guide recommends this time of year)' : ' (check the best season in the guide)'),
+    `   Guide: ${p.guide}`,
+    ...p.links.map((l) => `   ${l.label}: ${l.url}`),
+  ].join('\n'));
+  return {
+    structured: { disclosure: DISCLOSURE, tripFinder, answers, picks, packing },
+    text: [
+      picks.length ? `Three VoyageHacks picks for a ${ans.s} trip in ${label} (${ans.b} budget, ${ans.w}):`
+        : ans.s === 'ski' ? `No ski area in the VoyageHacks guides is open in ${label}. The northern season runs roughly December to April, the southern one (New Zealand, Argentina) June to September.`
+          : 'No VoyageHacks destination matches that combination. Try another month or trip type.',
+      '',
+      ...lines,
+      ...(packing.length ? ['', 'To pack for this trip (picks from the VoyageHacks buying guides):', gearLines(packing)] : []),
+      '',
+      `Same answers on the website: ${tripFinder}`,
+      '',
+      DISCLOSURE,
+      LINK_NOTE,
+    ].join('\n'),
+  };
+}
+
 // ── Tool dispatch ──────────────────────────────────────────────────────────
-// Exported so a second protocol binding (in production, an A2A endpoint at
-// /a2a) can serve the same twelve tools without reimplementing one of them.
-// Everything else here is internal; keep the export list minimal so a second
-// binding cannot drift into its own behaviour.
+// Exported for functions/a2a.js, which serves the same twelve tools over the
+// A2A protocol. Everything below is internal to this file; keep the export
+// list minimal so the A2A binding cannot drift into its own behaviour.
 export const HANDLERS = {
   search_articles: searchArticles,
   get_article: getArticle,
@@ -1934,6 +2342,7 @@ export const HANDLERS = {
   get_travel_vpn_links: getTravelVpnLinks,
   get_credit_card_links: getCreditCardLinks,
   get_booking_links: getBookingLinks,
+  find_destination: findDestination,
 };
 
 // ── JSON-RPC plumbing ──────────────────────────────────────────────────────
@@ -1955,6 +2364,27 @@ function toolText(text, structured, isError) {
   const result = { content: [{ type: 'text', text: capText(text) }], isError: !!isError };
   if (structured) result.structuredContent = structured;
   return result;
+}
+
+// Prompts follow the tools: a prompt whose tool the profile hides is hidden too.
+function promptsFor(profile) {
+  const excluded = PROFILE_EXCLUDED[profile];
+  return excluded ? PROMPTS.filter((p) => !excluded.has(p.tool)) : PROMPTS;
+}
+
+// Usage counts per tool, for knowing what the MCP and A2A surfaces are worth.
+// Workers Analytics Engine via the MCP_AE Pages binding (dashboard-configured,
+// like CONSENT_AE); without the binding this is a silent no-op. Only the tool,
+// language, caller country, profile and transport are stored: no query text,
+// no IP, nothing that identifies a person.
+export function logToolCall(context, tool, args, profile, via, ok) {
+  try {
+    const ae = context.env && context.env.MCP_AE;
+    if (!ae || typeof ae.writeDataPoint !== 'function') return;
+    const lang = args && typeof args.lang === 'string' && LANGS.includes(args.lang) ? args.lang : 'en';
+    const country = (context.request.cf && context.request.cf.country) || '';
+    ae.writeDataPoint({ blobs: [String(tool).slice(0, 64), lang, country, profile || 'full', via], doubles: [ok ? 1 : 0], indexes: [String(tool).slice(0, 32)] });
+  } catch { /* logging must never break a tool call */ }
 }
 
 // See PROFILE_EXCLUDED for what each profile hides and why.
@@ -1999,6 +2429,7 @@ async function handleMessage(context, msg, profile) {
           capabilities: {
             tools: { listChanged: false },
             resources: { subscribe: false, listChanged: false },
+            prompts: { listChanged: false },
           },
           serverInfo: SERVER_INFO,
           instructions: instructionsFor(profile),
@@ -2017,12 +2448,25 @@ async function handleMessage(context, msg, profile) {
           return rpcError(id, -32602, 'arguments must be an object');
         }
         const { text, structured, isError } = await handler(context, args || {});
+        logToolCall(context, name, args, profile, 'mcp', !isError);
         return rpcResult(id, toolText(text, structured, isError));
       }
       case 'resources/list':
         return rpcResult(id, {
-          resources: RESOURCES.map(({ uri, name, title, mimeType }) => ({ uri, name, title, mimeType })),
+          resources: RESOURCES.map(({ uri, name, title, mimeType, _meta }) => ({ uri, name, title, mimeType, ...(_meta ? { _meta } : {}) })),
         });
+      case 'prompts/list':
+        return rpcResult(id, { prompts: promptsFor(profile).map(({ name, title, description, arguments: a }) => ({ name, title, description, arguments: a, icons: ICONS })) });
+      case 'prompts/get': {
+        const prompt = promptsFor(profile).find((p) => p.name === params.name);
+        if (!prompt) return rpcError(id, -32602, `Unknown prompt: ${clean(params.name, 64) || '(none)'}`);
+        const a = {};
+        for (const arg of prompt.arguments) a[arg.name] = clean((params.arguments || {})[arg.name], 120);
+        return rpcResult(id, {
+          description: prompt.description,
+          messages: [{ role: 'user', content: { type: 'text', text: prompt.text(a) } }],
+        });
+      }
       case 'resources/templates/list':
         // No templated resources. An empty list is friendlier than -32601 to
         // clients that probe this after seeing the resources capability.
@@ -2030,6 +2474,9 @@ async function handleMessage(context, msg, profile) {
       case 'resources/read': {
         const resource = RESOURCES.find((r) => r.uri === params.uri);
         if (!resource) return rpcError(id, -32602, `Unknown resource: ${clean(params.uri, 200)}`);
+        if (resource.inline) {
+          return rpcResult(id, { contents: [{ uri: resource.uri, mimeType: resource.mimeType, text: resource.inline, _meta: resource._meta }] });
+        }
         const res = await fetchAsset(context, resource.path);
         if (!res.ok) return rpcError(id, -32603, `Resource unavailable (HTTP ${res.status})`);
         return rpcResult(id, {

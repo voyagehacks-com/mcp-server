@@ -2,12 +2,12 @@
 
 The official [Model Context Protocol](https://modelcontextprotocol.io) server for
 [VoyageHacks.com](https://voyagehacks.com), a travel publisher with about 680
-fact-checked guides in each of 11 languages, covering flights, airline reviews,
+fact-checked guides in each of 10 languages, covering flights, airline reviews,
 hotels, destinations, car rental, trains, airport transfers, eSIM, travel VPN,
 travel credit cards and travel gear.
 
 **Live endpoint:** `https://voyagehacks.com/mcp`
-**Version:** 2.1.0
+**Version:** 2.3.0
 **Docs:** <https://voyagehacks.com/en/mcp-server/>
 
 Stateless Streamable HTTP transport (JSON-RPC 2.0 over POST, single JSON
@@ -63,8 +63,28 @@ declares an `outputSchema` and returns `structuredContent` alongside readable te
 | `get_airport_transfer_links` | Airport taxi and pre-booked transfer links |
 | `get_esim_links` | Travel eSIM store links for a destination |
 | `get_travel_vpn_links` | Travel VPN links |
-| `get_credit_card_links` | American Express links for a country, plus verified German fee figures |
+| `get_credit_card_links` | Official American Express Germany and Revolut pages, plus verified German fee figures (no referral links) |
 | `get_booking_links` | Several categories of one trip in a single call, filtered by `include` |
+| `find_destination` | Three destinations for a month, trip type, budget and party, with guides, dated hotel and flight links and packing picks; returns the open questions when the month or trip type is missing |
+
+`get_hotel_links` also returns the same search on Expedia, Vrbo and Agoda (Stay22).
+Gear products link to their card on the VoyageHacks guide that reviews them
+(`productUrl`, `<guide>#p-<asin>`), never straight to Amazon: Amazon's policies
+allow tagged links only on the publisher's own site.
+
+## In-chat trip finder (MCP Apps)
+
+`find_destination` declares an [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview)
+view, `ui://voyagehacks/trip-finder.html` (`functions/_mcp-app.js`). Hosts that
+render MCP Apps (Claude, ChatGPT, VS Code and others) show three destination
+cards and a quiz that re-runs the tool through the host. It follows the host's
+light or dark theme and opens links with `ui/open-link`. Other clients get the
+same answer as text.
+
+## Prompts
+
+`where_to_go`, `plan_trip` and `pack_for_trip`, listed by clients that show MCP
+prompts as slash commands.
 
 Every vertical tool also returns up to 4 matching VoyageHacks guides in the
 requested language, so agents can cite full articles alongside the links.
@@ -77,8 +97,8 @@ independently written version of the guide, not a machine translation.
 
 | Profile | Endpoint | Tools |
 | --- | --- | --- |
-| full (default) | `https://voyagehacks.com/mcp` | 12 |
-| research | `https://voyagehacks.com/mcp?profile=research` | 10 |
+| full (default) | `https://voyagehacks.com/mcp` | 13 |
+| research | `https://voyagehacks.com/mcp?profile=research` | 11 |
 | guides | `https://voyagehacks.com/mcp?profile=guides` | 4 |
 
 The research profile omits `get_travel_vpn_links` and `get_credit_card_links`,
@@ -88,10 +108,10 @@ initiate a subscription or purchase.
 
 The guides profile goes further and omits every booking tool, leaving
 `search_articles`, `get_article`, `search_travel_gear` and
-`recommend_travel_gear`. Its only outbound purchases are Amazon product pages for
-physical travel gear, so it satisfies directories that allow commerce for physical
+`recommend_travel_gear`. Its products link to the VoyageHacks guides, which sell
+physical travel gear on Amazon, so it satisfies directories that allow commerce for physical
 goods only. It also serves its own `initialize` instructions, which describe the
-four tools it actually has rather than the full twelve.
+four tools it actually has rather than the full thirteen.
 
 Each profile is addressable two ways: `/mcp?profile=guides` and `/mcp/guides` are
 the same handler. The path form exists because the OpenAI plugin submission portal
@@ -134,8 +154,9 @@ The whole site is agent-readable, not just this server:
 ## Transparency
 
 VoyageHacks is an affiliate-funded publisher. Some booking and shopping links
-returned by these tools are affiliate links (Booking.com through CJ Affiliate,
-Amazon Associates, Travelpayouts, American Express referral). VoyageHacks may
+returned by these tools are affiliate links (Booking.com and other advertisers
+through CJ Affiliate, Travelpayouts, Stay22). No Amazon or referral link appears
+in tool output. VoyageHacks may
 earn a commission from qualifying bookings or purchases at no additional cost to
 the user.
 
@@ -157,10 +178,12 @@ This is a Cloudflare Pages Function (`functions/mcp.js`). To run your own instan
    emits `/<lang>/index.json` (search index) and `/<lang>/gear.json` (gear
    catalog). Point the `SITE` constant at your deployment.
 3. Replace the affiliate constants near the top of `mcp.js` (Travelpayouts
-   marker, CJ ids, Amazon tag, Amex links) with your own program ids.
+   marker, CJ ids, Stay22 aid) with your own program ids. `find_destination`
+   also reads the trip finder data block from `/<lang>/trip-finder/` and the
+   shared matching rules in `assets/js/trip-match.mjs`.
 
 This repository mirrors the production function. The only intentional difference
-is the import on line 37: production imports `htmlToMarkdown` from the site's
+is the `htmlToMarkdown` import: production imports `htmlToMarkdown` from the site's
 `_middleware.js`, this mirror from its own `html-to-markdown.js`. If you fork it,
 keep the affiliate constants in sync with your own site config.
 
