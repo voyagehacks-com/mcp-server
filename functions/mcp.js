@@ -417,8 +417,7 @@ export const TOOLS = [
       'eSIM, travel VPN, travel credit cards, travel gear and month-by-month "where to go" guides. ' +
       'Returns ranked matches with the title, canonical URL, section and a matching excerpt for each. ' +
       'Useful when a travel question needs published prices, comparisons, best-time-to-visit advice or ' +
-      'step-by-step detail that can be attributed to a source URL, and as the first step before ' +
-      'get_article. It searches VoyageHacks content only: not the wider web, not live fares or hotel ' +
+      'step-by-step detail that can be attributed to a source URL. It searches VoyageHacks content only: not the wider web, not live fares or hotel ' +
       'availability, and it returns no booking or product links (the get_..._links tools do that).',
     inputSchema: {
       type: 'object',
@@ -467,7 +466,7 @@ export const TOOLS = [
       'Fetch one VoyageHacks page by URL or site path (for example ' +
       '"/en/hotels/best-budget-hotels-in-rome/") and return its body as Markdown, together with the ' +
       'title, canonical URL, language, section, publication date and last-updated date read from the ' +
-      'page itself. Useful after search_articles when the full text is needed to quote figures ' +
+      'page itself. Useful when the full text of a guide is needed to quote figures ' +
       'accurately, and when a source needs to be cited with a real date. Only HTML pages on ' +
       'voyagehacks.com can be read: the tool cannot fetch other websites, data files or images, and ' +
       'very long pages are truncated with a marker at the cut.',
@@ -507,8 +506,7 @@ export const TOOLS = [
       'translation earbuds and camping and outdoor gear. Each result returns the product name, its ' +
       'category, the published reason it was picked, its Amazon ASIN and a link to the product on the ' +
       "VoyageHacks buying guide that reviews it, where it can be bought on Amazon. Useful when a user asks which travel product to buy, or what " +
-      'to pack for a trip and names a category or a destination. For a whole kit built from a trip ' +
-      'description rather than one category, recommend_travel_gear is the matching tool. ' +
+      'to pack for a trip and names a category or a destination.  ' +
       'This is the VoyageHacks editorial catalog, not a search of all of Amazon: products outside the ' +
       'published guides are not findable here, and prices, star ratings, review counts and stock are ' +
       'not available and are never returned. The guides carry Amazon affiliate links: VoyageHacks may ' +
@@ -552,8 +550,7 @@ export const TOOLS = [
       'do I need for Y" and "I only have carry-on, what should I bring". It draws on the VoyageHacks ' +
       'editorial catalog, not a search of all of Amazon, and returns published picks only: prices, ' +
       'star ratings, review counts and stock are not available and are never returned, and it ' +
-      'produces no clothing sizes and no itinerary. For one named product category, ' +
-      'search_travel_gear is narrower. The guides carry Amazon ' +
+      'produces no clothing sizes and no itinerary.  The guides carry Amazon ' +
       'affiliate links: VoyageHacks may earn a commission from qualifying purchases at no ' +
       'additional cost to the buyer, which should be disclosed when the products are presented.',
     inputSchema: {
@@ -610,8 +607,7 @@ export const TOOLS = [
       '(AirHelp), a Vueling link for short-haul Europe, and, when the route touches their hubs, direct ' +
       'links for Air Serbia (Belgrade) and Air India. The Booking.com link is regionalized to the ' +
       "traveler's country. Useful when a trip involves air travel and the user wants somewhere to " +
-      'compare fares. It returns search links only: no live fares, seat availability or schedules, no ' +
-      'booking, and no airport transfer (get_airport_transfer_links covers that). Affiliate links: ' +
+      'compare fares. It returns search links only: no live fares, seat availability or schedules, no booking and no airport transfers. Affiliate links: ' +
       'VoyageHacks may earn a commission at no additional cost to the traveler, which should be ' +
       'disclosed when the links are presented.',
     inputSchema: {
@@ -863,9 +859,7 @@ export const TOOLS = [
       'and the travel gear section, all regionalized to the traveler. Accepts route IATA codes, a city ' +
       'and trip dates, so the flight and hotel links are prefilled. The "include" parameter selects ' +
       'which categories are returned, so a trip with no driving can leave out car rental. Useful when ' +
-      'a user is planning a trip end to end and wants every option in one place. Each per-topic tool ' +
-      '(get_flight_links, get_hotel_links, get_esim_links and the rest) returns richer detail and more ' +
-      'guides for a single category. It returns search links only: no live prices, no availability and ' +
+      'a user is planning a trip end to end and wants every option in one place.  It returns search links only: no live prices, no availability and ' +
       'no booking. Affiliate links: VoyageHacks may earn a commission at no additional cost to the ' +
       'traveler, which should be disclosed when the links are presented.',
     inputSchema: {
@@ -983,7 +977,10 @@ export const TOOLS = [
     },
   },
 ];
-for (const tool of TOOLS) tool.icons = ICONS;
+for (const tool of TOOLS) {
+  tool.icons = ICONS;
+  tool.description = tool.description.replace(/ {2,}/g, ' ');
+}
 
 const FIND_DESTINATION_GUIDES_DESCRIPTION =
   'Suggest three destinations for a trip from the month (or "flexible"), the kind of trip (beach, ' +
