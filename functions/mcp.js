@@ -292,9 +292,13 @@ const PROFILE_EXCLUDED = {
     'get_travel_vpn_links',
     'get_credit_card_links',
     'get_booking_links',
-    'find_destination',
   ]),
 };
+
+// find_destination is served on the guides profile too, without booking links:
+// picks, the destination guides and packing picks only. Hotel and flight links
+// are services, which the ChatGPT plugin attestation for that profile rules out.
+const LINKLESS_PROFILES = new Set(['guides']);
 
 const INSTRUCTIONS =
   'VoyageHacks is a multilingual travel guide site with about 680 published guides in each of ' +
@@ -328,7 +332,9 @@ const GUIDES_INSTRUCTIONS =
   '- Article research and citation: search_articles, then get_article for the full text, its ' +
   'canonical URL, its publication date and the date it was last updated.\n' +
   '- Travel products and packing: search_travel_gear (one category), recommend_travel_gear (a kit ' +
-  'built from a trip description, one product per category).\n\n' +
+  'built from a trip description, one product per category).\n' +
+  '- Where to go: find_destination suggests three destinations from a month, a trip type, a budget ' +
+  'and who is travelling, each with its VoyageHacks guide and packing picks (the site\'s trip finder).\n\n' +
   'Scope and limits: the tools return published editorial content and links to product pages. ' +
   'They do not return live prices, live availability, star ratings or review counts, and they ' +
   'cannot make a booking, place an order or complete a purchase. This profile serves no booking ' +
@@ -978,6 +984,18 @@ export const TOOLS = [
   },
 ];
 for (const tool of TOOLS) tool.icons = ICONS;
+
+const FIND_DESTINATION_GUIDES_DESCRIPTION =
+  'Suggest three destinations for a trip from the month (or "flexible"), the kind of trip (beach, ' +
+  'city break, hiking, ski, road trip, adventure or working remotely), the budget and who is ' +
+  'travelling. Picks come only from VoyageHacks\' own where-to-go month guides and travel-style ' +
+  'lists, with the average high temperature each month guide states, the reasons it fits, the ' +
+  'destination guide to read, and three packing picks for that kind of trip linked to the ' +
+  'VoyageHacks buying guides. This is the same matching as the trip finder on voyagehacks.com. ' +
+  'When the month or the trip type is missing it returns no picks, only the questions that are ' +
+  'still open with their allowed answers (needsInput). It returns no booking links, no live prices ' +
+  'and no availability, and cannot book. The buying guides carry Amazon affiliate links: ' +
+  'VoyageHacks may earn a commission at no additional cost to the buyer.';
 
 // Prompts: ready-made starting points that clients list as slash commands.
 // Each names the tool it leads to, so a profile that hides the tool hides it too.
@@ -2296,6 +2314,8 @@ async function findDestination(context, args = {}) {
     if (c.pricey) reasons.push(`pricier than a ${ans.b === 'budget' ? 'budget' : 'mid-range'} trip`);
     return { name: pl.n, country: pl.c || null, guide: `${SITE}${pl.u}`, image: pl.i ? `${SITE}${pl.i}` : null, avgHighC: c.high, season: c.fit, costLevel: c.cost, reasons, links };
   });
+  // Linkless profile: keep the guide, drop every booking link.
+  if (LINKLESS_PROFILES.has(context.vhProfile)) for (const p of picks) p.links = [];
   const packing = picks.length ? await tripPacking(context, lang, ans) : [];
   const q = new URLSearchParams({ m: ans.m, s: ans.s, b: ans.b, w: ans.w });
   if (origin) q.set('f', origin);
@@ -2390,7 +2410,9 @@ export function logToolCall(context, tool, args, profile, via, ok) {
 // See PROFILE_EXCLUDED for what each profile hides and why.
 function toolsFor(profile) {
   const excluded = PROFILE_EXCLUDED[profile];
-  return excluded ? TOOLS.filter((t) => !excluded.has(t.name)) : TOOLS;
+  const tools = excluded ? TOOLS.filter((t) => !excluded.has(t.name)) : TOOLS;
+  if (!LINKLESS_PROFILES.has(profile)) return tools;
+  return tools.map((t) => (t.name === 'find_destination' ? { ...t, description: FIND_DESTINATION_GUIDES_DESCRIPTION } : t));
 }
 
 // The instructions must describe only the tools actually served, or the client is
@@ -2447,6 +2469,7 @@ async function handleMessage(context, msg, profile) {
         if (args !== undefined && (args === null || typeof args !== 'object' || Array.isArray(args))) {
           return rpcError(id, -32602, 'arguments must be an object');
         }
+        context.vhProfile = profile;
         const { text, structured, isError } = await handler(context, args || {});
         logToolCall(context, name, args, profile, 'mcp', !isError);
         return rpcResult(id, toolText(text, structured, isError));

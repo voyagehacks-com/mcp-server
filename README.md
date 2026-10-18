@@ -99,7 +99,7 @@ independently written version of the guide, not a machine translation.
 | --- | --- | --- |
 | full (default) | `https://voyagehacks.com/mcp` | 13 |
 | research | `https://voyagehacks.com/mcp?profile=research` | 11 |
-| guides | `https://voyagehacks.com/mcp?profile=guides` | 4 |
+| guides | `https://voyagehacks.com/mcp?profile=guides` | 5 |
 
 The research profile omits `get_travel_vpn_links` and `get_credit_card_links`,
 whose links land on a subscription signup and a financial-product application.
@@ -107,11 +107,12 @@ It exists for app directories whose guidelines restrict linking to pages that
 initiate a subscription or purchase.
 
 The guides profile goes further and omits every booking tool, leaving
-`search_articles`, `get_article`, `search_travel_gear` and
-`recommend_travel_gear`. Its products link to the VoyageHacks guides, which sell
+`search_articles`, `get_article`, `search_travel_gear`,
+`recommend_travel_gear` and `find_destination`, which there returns picks,
+guides and packing picks with no booking links. Its products link to the VoyageHacks guides, which sell
 physical travel gear on Amazon, so it satisfies directories that allow commerce for physical
 goods only. It also serves its own `initialize` instructions, which describe the
-four tools it actually has rather than the full thirteen.
+five tools it actually has rather than the full thirteen.
 
 Each profile is addressable two ways: `/mcp?profile=guides` and `/mcp/guides` are
 the same handler. The path form exists because the OpenAI plugin submission portal
