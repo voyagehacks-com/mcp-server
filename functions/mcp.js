@@ -418,7 +418,7 @@ export const TOOLS = [
       'Returns ranked matches with the title, canonical URL, section and a matching excerpt for each. ' +
       'Useful when a travel question needs published prices, comparisons, best-time-to-visit advice or ' +
       'step-by-step detail that can be attributed to a source URL. It searches VoyageHacks content only: not the wider web, not live fares or hotel ' +
-      'availability, and it returns no booking or product links (the get_..._links tools do that).',
+      'availability, and it returns no booking or product links.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2255,6 +2255,9 @@ async function findDestination(context, args = {}) {
     s: clean(args.trip_type, 20).toLowerCase(),
     b: BUDGETS.includes(clean(args.budget, 20)) ? clean(args.budget, 20) : 'mid',
     w: PARTIES.includes(clean(args.travelers, 20)) ? clean(args.travelers, 20) : 'couple',
+    // Only the country the traveller gave: the request's own geolocation is the
+    // AI host's data centre, which would rank every answer for its region.
+    h: clean(args.country, 2).toUpperCase(),
   };
   const origin = iata(args.origin);
   const answers = { month: month || null, trip_type: ans.s || null, budget: ans.b, travelers: ans.w, origin: origin || null };
