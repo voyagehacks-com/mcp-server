@@ -50,7 +50,8 @@
 import { htmlToMarkdown } from './html-to-markdown.js';
 // Trip Finder matching rules, shared with the website quiz (assets/js/trip-finder.js),
 // so /<lang>/trip-finder/ and find_destination always give the same three picks.
-import { MONTHS, TRIP_TYPES, BUDGETS, PARTIES, match as tripMatch, partnerKinds, adultsFor, tripDates, kayakTarget, bookingTarget } from '../assets/js/trip-match.mjs';
+import { MONTHS, TRIP_TYPES, PARTIES, NIGHTS, match as tripMatch, partnerKinds, adultsFor, childrenFor, roomsFor, nightsFor, budgetRange, tripTotal, flightMinutes, tripDates, kayakTarget, bookingTarget } from '../assets/js/trip-match.mjs';
+import { cheapFares } from './_fares.js';
 // MCP Apps view (in-chat UI) for find_destination.
 import { TRIP_APP_URI, TRIP_APP_HTML, TRIP_APP_META } from './_mcp-app.js';
 
@@ -228,7 +229,7 @@ const AMEX_DE_FACTS = {
   changes_oct_2026: 'From 2026-10-01: Platinum loses Lufthansa lounge access worldwide (access until 2026-09-30); new Platinum "Lounge on the Go" 6 x 20 EUR airport vouchers at FRA T1 and MUC T2 (2026-10-01 to 2027-03-31, max one per day); Platinum LODENFREY credit (2 x 50 EUR per half-year) needs a purchase of at least 200 EUR and re-activation.',
   cards: {
     platinum: { fee: '60 EUR/month = 720 EUR/year', public_welcome: 'up to 340 EUR statement credit (160 EUR after 6,000 EUR spend in 6 months + 180 EUR after a further 4,000 EUR)', credits: '650 EUR/year: 200 EUR travel (Amex Travel), 150 EUR dining, 200 EUR SIXT ride, 100 EUR LODENFREY (2 x 50 EUR, min. 200 EUR purchase from 2026-10-01)', perks: '1,550+ lounges (Global Lounge Collection incl. Priority Pass, one guest; Lufthansa lounges only until 2026-09-30), Lounge on the Go 6 x 20 EUR (FRA/MUC, Oct 2026 to Mar 2027), ALL Accor Gold, Hilton Honors Gold, Marriott Bonvoy Gold Elite, Condor/Marabu perks, full travel insurance, up to 7 cards' },
-    gold: { fee: '20 EUR/month = 240 EUR/year (was 144 EUR until 2025; no free first year any more)', public_welcome: 'up to 200 EUR statement credit (80 EUR after 3,000 EUR + 120 EUR after a further 2,000 EUR in 6 months)', credits: '430 EUR/year per Amex: 20 EUR/month SIXT+, 2x25 EUR SIXT rent, 5 EUR/month FREENOW, 2x40 EUR LODENFREY', perks: 'metal card (Gold or Rose), travel insurance incl. family, GHA Discovery Gold, no lounge access' },
+    gold: { fee: '20 EUR/month = 240 EUR/year (was 144 EUR until 2025; no free first year any more)', public_welcome: 'up to 200 EUR statement credit (80 EUR after 3,000 EUR + 120 EUR after a further 2,000 EUR in 6 months)', credits: '450 EUR/year per Amex: 20 EUR/month SIXT+, 2x25 EUR SIXT rent, 5 EUR/month FREENOW, 100 EUR LODENFREY', perks: 'metal card (Gold or Rose), travel insurance incl. family, GHA Discovery Gold, no lounge access' },
     green: { fee: 'American Express Card (successor of the retired Green Card): 5 EUR/month = 60 EUR/year; if annual spend exceeds 9,000 EUR the following year is free', public_welcome: '40 EUR statement credit after 2,000 EUR spend in 6 months', credits: 'none', perks: 'Membership Rewards included, 1 point per EUR, one supplementary card' },
     blue: { fee: '0 EUR', public_welcome: '25 EUR statement credit after 1,200 EUR spend in 6 months', credits: 'none', perks: 'Membership Rewards optional at 30 EUR/year (+5,000 starter points); earns nothing without it' },
     payback: { fee: '0 EUR (also sold as the dm PAYBACK American Express Karte, same 0 EUR and 1,000 bonus points)', public_welcome: '1,000 PAYBACK bonus points', credits: 'none', perks: '1 PAYBACK point per 3 EUR (not at petrol stations) on top of partner points, all supplementary cards free' },
@@ -928,7 +929,9 @@ export const TOOLS = [
       properties: {
         month: { type: 'string', enum: [...MONTHS, 'flexible'], description: 'Travel month in English, lowercase, or "flexible" for the next two months.' },
         trip_type: { type: 'string', enum: TRIP_TYPES, description: 'Kind of trip. "campervan" means a road trip; "digital-nomad" means working remotely.' },
-        budget: { type: 'string', enum: BUDGETS, description: 'Daily budget: budget (hostels, street food), mid (3-star) or luxury. Defaults to mid.' },
+        budget: { type: 'string', maxLength: 12, pattern: '^(budget|mid|upper|luxury|\\d{1,5}-\\d{1,5})$', description: 'Nightly hotel budget for the whole room, in euros: "budget" (under 60), "mid" (60 to 120), "upper" (120 to 250), "luxury" (250 and up), or the traveller\'s own range as "min-max", e.g. "80-150" ("300-0" = no upper limit). Convert other currencies to euros first. Defaults to mid.' },
+        trip_budget: { type: 'string', maxLength: 13, pattern: '^\\d{1,6}-\\d{1,6}$', description: 'Budget for the WHOLE trip in euros, everyone travelling, return flights and hotel together, as "min-max", e.g. "1500-3000" ("4000-0" = no upper limit). Preferred over budget: with an origin, each pick is costed with the cheapest recent round-trip fare found from there. Convert other currencies to euros first.' },
+        nights: { type: 'integer', enum: NIGHTS, description: 'Trip length in nights for the dated links, the stay estimate and the trip total. Defaults to 7.' },
         travelers: { type: 'string', enum: PARTIES, description: 'Who is travelling. Defaults to couple.' },
         origin: { type: 'string', maxLength: 40, description: 'Departure IATA city or airport code for the flight links, e.g. LON. Optional.' },
         country: COUNTRY_PROP,
@@ -967,6 +970,15 @@ export const TOOLS = [
               avgHighC: { type: ['number', 'null'] },
               season: { type: 'string', description: 'in: the guides recommend this month; unknown: check the guide; out: outside the guide\'s sweet spot.' },
               reasons: { type: 'array', items: { type: 'string' } },
+              hotelPerNightEUR: { type: ['array', 'null'], items: { type: 'number' }, description: 'Typical double-room price per night [min, max] in euros at the level closest to the budget, from the VoyageHacks guides and published averages; null when no figure is published. Not a live price.' },
+              hotelLevel: { type: ['string', 'null'], description: 'lo (budget hotel or guesthouse), mid (3 to good 4-star) or hi (4 to 5-star).' },
+              stayEstimateEUR: { type: ['array', 'null'], items: { type: 'number' }, description: 'hotelPerNightEUR x nights x rooms.' },
+              budgetFit: { type: ['string', 'null'], description: 'in: a hotel level fits the budget; over: even the cheapest level costs more; under: the dearest level costs less.' },
+              flightEstimate: { type: ['string', 'null'], description: 'Nonstop flight time estimated from the great-circle distance, e.g. "about 2 h 30". Not a schedule.' },
+              fareEUR: { type: ['number', 'null'], description: 'Cheapest round-trip economy fare per person from the origin that Aviasales users found for the travel month in the last few days (Travelpayouts data API). Not a live quote; null when none was found or no origin was given.' },
+              tripTotalEUR: { type: ['array', 'null'], items: { type: 'number' }, description: 'fareEUR x travellers + stayEstimateEUR: the whole trip [min, max]; null when either part is unknown.' },
+              tripBudgetFit: { type: ['string', 'null'], description: 'in, over or under the trip_budget, from tripTotalEUR.' },
+              bestMonths: { type: 'array', items: { type: 'integer' }, description: 'Months (1-12) the destination guide recommends.' },
               links: LINKS_SCHEMA,
             },
             required: ['name', 'guide', 'reasons', 'links'],
@@ -1623,7 +1635,7 @@ const KIT_RULES = [
   { keys: ['best-packing-cubes', 'best-compression-packing-bags'], weight: 6, triggers: ['carry-on', 'carry on', 'cabin', 'hand luggage', 'pack', 'packing', 'organize', 'organise', 'light', 'minimal', 'backpacking', 'weeks', 'month', 'winter', 'bulky', 'jackets'] },
   /* Bag you carry on: backpack, wheeled carry-on or personal item. They are
      substitutes, so one rule yields one bag, never three. */
-  { keys: ['best-carry-on-travel-backpacks', 'carry-on-suitcases', 'carry-on-backpacks-women', 'personal-item-bags'], weight: 5, triggers: ['backpack', 'suitcase', 'spinner', 'roller', 'wheeled', 'carry-on', 'carry on', 'cabin', 'hand luggage', 'no checked bag', 'budget airline', 'ryanair', 'wizz', 'easyjet', 'personal item', 'under the seat', 'under-seat', 'backpacking', 'hostel'] },
+  { keys: ['best-carry-on-travel-backpacks', 'carry-on-suitcases', 'carry-on-backpacks-women', 'personal-item-bags', 'best-underseat-luggage-with-wheels'], weight: 5, triggers: ['backpack', 'suitcase', 'spinner', 'roller', 'wheeled', 'carry-on', 'carry on', 'cabin', 'hand luggage', 'no checked bag', 'budget airline', 'ryanair', 'wizz', 'easyjet', 'personal item', 'under the seat', 'under-seat', 'backpacking', 'hostel'] },
   { keys: ['best-passport-holders'], weight: 4, triggers: ['passport', 'passports', 'documents', 'visa', 'border', 'immigration', 'pickpocket', 'pickpockets', 'theft', 'family', 'kids', 'children', 'international', 'abroad', 'overseas', 'airtag', 'lost'] },
   { keys: ['luggage-scales-2026'], weight: 3, triggers: ['checked', 'checked bag', 'suitcase', 'weight', 'overweight', 'baggage fee', 'budget airline', 'ryanair', 'wizz', 'easyjet', 'allowance'] },
   { keys: ['luggage-trackers-2026', 'airtag-tile-chipolo-luggage', 'travel-gifts'], weight: 5, triggers: ['checked', 'checked bag', 'suitcase', 'connection', 'connecting', 'lost luggage', 'transfer', 'multi-city', 'multi city', 'family', 'kids', 'airtag', 'tracker', 'gift', 'present'] },
@@ -1648,7 +1660,7 @@ const KIT_RULES = [
   { keys: ['best-travel-gadgets-2026'], weight: 2, triggers: ['gadget', 'gadgets', 'tech', 'electronics'] },
 
   // Shooting the trip
-  { keys: ['best-travel-cameras', 'best-travel-drones-for-vlogging'], weight: 4, triggers: ['camera', 'photo', 'photography', 'photos', 'vlog', 'vlogging', 'filming', 'video', 'content', 'drone', 'creator'] },
+  { keys: ['best-travel-cameras', 'best-travel-drones-for-vlogging', 'best-point-and-shoot-cameras-for-travel'], weight: 4, triggers: ['camera', 'photo', 'photography', 'photos', 'vlog', 'vlogging', 'filming', 'video', 'content', 'drone', 'creator'] },
 
   // Cold weather
   { keys: ['christmas-market-packing-list', 'winter-christmas-travel-tips', 'best-heated-vests-and-hand-warmers-for-travel'], weight: 6, triggers: ['christmas market', 'christmas markets', 'weihnachtsmarkt', 'freezing', 'sub-zero', 'cold', 'thermal', 'base layer', 'december', 'january', 'lapland', 'iceland', 'norway', 'finland', 'northern lights'] },
@@ -1723,6 +1735,11 @@ const KIT_RULES = [
 
   // Winter clothing (Q4 2026 wave). Gloves, jackets, base layers and boots are
   // different layers, not substitutes, so each is its own rule.
+  // Q4d wave (2026-10-29): winter warmth, socks, shoe bags, instant cameras
+  { keys: ['best-rechargeable-hand-warmers', 'best-heated-socks-for-travel'], weight: 4, triggers: ['hand warmer', 'hand warmers', 'cold hands', 'cold feet', 'heated socks', 'freezing', 'sub-zero', 'lapland', 'northern lights', 'christmas market', 'christmas markets', 'skiing', 'winter'] },
+  { keys: ['best-merino-wool-travel-socks'], weight: 3, triggers: ['socks', 'merino', 'hiking', 'walking', 'one bag', 'onebag', 'winter', 'skiing', 'cold feet', 'blisters'] },
+  { keys: ['best-travel-shoe-bags'], weight: 2, triggers: ['shoes', 'sneakers', 'boots', 'gym', 'packing', 'pack', 'suitcase', 'heels'] },
+  { keys: ['best-instant-cameras-for-travel'], weight: 3, triggers: ['instant camera', 'instax', 'polaroid', 'prints', 'scrapbook', 'journal', 'wedding', 'honeymoon', 'gift', 'present'] },
   { keys: ['best-heated-gloves-for-travel'], weight: 4, triggers: ['gloves', 'heated gloves', 'cold hands', 'raynaud', 'freezing', 'sub-zero', 'lapland', 'northern lights', 'christmas market', 'christmas markets', 'skiing', 'winter'] },
   { keys: ['best-packable-down-jackets'], weight: 4, triggers: ['down jacket', 'puffer', 'packable jacket', 'winter jacket', 'cold', 'freezing', 'iceland', 'norway', 'lapland', 'christmas market', 'winter', 'carry-on winter'] },
   { keys: ['best-thermal-base-layers-for-travel'], weight: 4, triggers: ['base layer', 'base layers', 'thermal', 'thermals', 'merino', 'long johns', 'freezing', 'sub-zero', 'northern lights', 'skiing', 'winter'] },
@@ -2242,9 +2259,9 @@ async function tripPacking(context, lang, ans) {
 const TRIP_QUESTIONS = [
   { field: 'month', question: 'When do you want to travel? A month, or "flexible" for the next two months.', options: [...MONTHS, 'flexible'], required: true },
   { field: 'trip_type', question: 'What kind of trip: beach, city break, hiking, ski, road trip (campervan), adventure or working remotely (digital-nomad)?', options: TRIP_TYPES, required: true },
-  { field: 'budget', question: 'What daily budget: budget (hostels, street food), mid (3-star) or luxury?', options: BUDGETS, required: false },
   { field: 'travelers', question: 'Who is going: solo, couple, family or friends?', options: PARTIES, required: false },
-  { field: 'origin', question: 'Which city or airport would you fly from (IATA code, e.g. LON)? Optional.', options: [], required: false },
+  { field: 'origin', question: 'Which city or airport would you fly from (IATA code, e.g. LON)? Optional, but needed to cost the flights.', options: [], required: false },
+  { field: 'trip_budget', question: 'What is the budget for the whole trip in euros, flights and hotel for everyone, as a range like 1500-3000?', options: [], required: false },
 ];
 
 async function findDestination(context, args = {}) {
@@ -2253,14 +2270,18 @@ async function findDestination(context, args = {}) {
   const ans = {
     m: month === 'flexible' ? 'flex' : month,
     s: clean(args.trip_type, 20).toLowerCase(),
-    b: BUDGETS.includes(clean(args.budget, 20)) ? clean(args.budget, 20) : 'mid',
+    b: /^\d{1,6}-\d{1,6}$/.test(clean(args.trip_budget, 13)) ? `t${clean(args.trip_budget, 13)}`
+      : /^(budget|mid|upper|luxury|\d{1,5}-\d{1,5})$/.test(clean(args.budget, 12)) ? clean(args.budget, 12) : 'mid',
     w: PARTIES.includes(clean(args.travelers, 20)) ? clean(args.travelers, 20) : 'couple',
     // Only the country the traveller gave: the request's own geolocation is the
     // AI host's data centre, which would rank every answer for its region.
     h: clean(args.country, 2).toUpperCase(),
   };
   const origin = iata(args.origin);
-  const answers = { month: month || null, trip_type: ans.s || null, budget: ans.b, travelers: ans.w, origin: origin || null };
+  const nights = nightsFor(args.nights);
+  ans.n = nights;
+  const total = tripTotal(ans.b);
+  const answers = { month: month || null, trip_type: ans.s || null, budget: total ? null : ans.b, trip_budget: total ? ans.b.slice(1) : null, travelers: ans.w, origin: origin || null, nights };
 
   // Missing essentials: hand back the questions rather than an error, so the
   // assistant asks the traveler in chat (or the trip-finder UI shows its form).
@@ -2284,11 +2305,18 @@ async function findDestination(context, args = {}) {
   const region = resolveRegion(context, args.country, lang);
   const D = await loadTripData(context, lang);
   const now = new Date();
-  const dates = tripDates(ans.m, now);
+  const dates = tripDates(ans.m, now, nights);
   const adults = adultsFor(ans.w);
   // Families: 2 adults + 2 children, so Booking.com and Vrbo show family
   // rooms instead of doubles. Booking asks for the children's ages on arrival.
-  const children = ans.w === 'family' ? 2 : 0;
+  const children = childrenFor(ans.w);
+  const rooms = roomsFor(ans.w);
+  const range = budgetRange(ans.b);
+  const fromLL = origin ? ((D.ap && D.ap[origin]) || ((D.oa || []).find((a) => a[0] === origin) || []).slice(2, 4)) : null;
+  // Whole-trip budgets: the cheapest recent fares from the origin (functions/_fares.js).
+  const fx = origin && total ? await cheapFares(context.env, origin, dates[0].slice(0, 7)) : null;
+  if (fx) ans.fares = fx.f;
+  if (fromLL && fromLL.length) ans.o = fromLL;
   const party = `${adults} adult${adults > 1 ? 's' : ''}${children ? ` + ${children} children` : ''}`;
   const picks = tripMatch(D, ans, now).map((c) => {
     const pl = D.places[c.p];
@@ -2298,7 +2326,7 @@ async function findDestination(context, args = {}) {
     const links = [];
     for (const k of partnerKinds(c.p, ans)) {
       if (k === 'hotels') {
-        links.push({ label: `Hotels in ${pl.q}, ${dates[0]} to ${dates[1]}, ${party} (Booking.com)`, url: cjLink(region, 'deeplink', bookingTarget(pl.q, dates, adults) + (children ? `&group_children=${children}` : ''), 'mcp-trip-finder') });
+        links.push({ label: `Hotels in ${pl.q}, ${dates[0]} to ${dates[1]}, ${party}${rooms > 1 ? `, ${rooms} rooms` : ''}, filtered to the nightly budget (Booking.com)`, url: cjLink(region, 'deeplink', bookingTarget(pl.q, dates, adults, { children, rooms, range: budgetRange(ans.b, { fare: c.trip && c.trip.fare, n: nights, w: ans.w }) }), 'mcp-trip-finder') });
         // One alternative per pick, chosen for the trip: holiday homes for
         // families, Agoda in Asia, Expedia otherwise.
         const alt = ans.w === 'family' ? ['vrbo', 'Holiday homes and apartments (Vrbo)']
@@ -2311,8 +2339,19 @@ async function findDestination(context, args = {}) {
       if (k === 'cars') links.push({ label: `Car rental${carRentalLink(pl.q) !== TP.economybookings ? ` in ${pl.q}` : ' comparison'} (EconomyBookings)`, url: carRentalLink(pl.q) });
       if (k === 'esim') links.push({ label: 'Travel eSIM (Airalo)', url: TP.airalo });
     }
-    if (c.pricey) reasons.push(`pricier than a ${ans.b === 'budget' ? 'budget' : 'mid-range'} trip`);
-    return { name: pl.n, country: pl.c || null, guide: `${SITE}${pl.u}`, image: pl.i ? `${SITE}${pl.i}` : null, avgHighC: c.high, season: c.fit, costLevel: c.cost, reasons, links };
+    if (c.trip && c.trip.fit === 'over') reasons.push('over the trip budget');
+    else if (c.pricey) reasons.push(total ? 'hotels pricier than the trip budget leaves' : 'pricier than the nightly budget');
+    const pr = c.price ? c.price.r : null;
+    const fm = fromLL && pl.ll && pl.ll.length ? flightMinutes(fromLL, pl.ll) : 0;
+    return {
+      name: pl.n, country: pl.c || null, guide: `${SITE}${pl.u}`, image: pl.i ? `${SITE}${pl.i}` : null, avgHighC: c.high, season: c.fit, costLevel: c.cost, reasons,
+      hotelPerNightEUR: pr ? pr.map((x) => x * rooms) : null, hotelLevel: c.price ? c.price.lv : null,
+      stayEstimateEUR: pr ? pr.map((x) => x * rooms * nights) : null, budgetFit: c.price && c.price.fit !== 'unknown' ? c.price.fit : null,
+      flightEstimate: fm ? `about ${Math.floor(fm / 60)} h${fm % 60 ? ` ${String(fm % 60).padStart(2, '0')}` : ''}` : null,
+      fareEUR: c.trip ? c.trip.fare : null, tripTotalEUR: c.trip ? c.trip.total : null, tripBudgetFit: c.trip ? c.trip.fit : null,
+      bestMonths: ans.s === 'ski' && pl.sk && pl.sk.length ? pl.sk : (pl.s || []),
+      links,
+    };
   });
   // Linkless profile: keep the guide, drop every booking link.
   const linkless = LINKLESS_PROFILES.has(context.vhProfile);
@@ -2321,20 +2360,25 @@ async function findDestination(context, args = {}) {
     ? 'The packing picks open VoyageHacks buying guides, which carry Amazon affiliate links: VoyageHacks may earn a commission from qualifying purchases at no additional cost to the buyer.'
     : DISCLOSURE;
   const packing = picks.length ? await tripPacking(context, lang, ans) : [];
-  const q = new URLSearchParams({ m: ans.m, s: ans.s, b: ans.b, w: ans.w });
+  const LEGACY_BAND = { budget: '0-60', mid: '60-120', upper: '120-250', luxury: '250-0' };
+  const q = new URLSearchParams({ m: ans.m, s: ans.s, b: LEGACY_BAND[ans.b] || ans.b, w: ans.w, n: String(nights) });
   if (origin) q.set('f', origin);
   const tripFinder = `${SITE}/${lang}/trip-finder/?${q.toString()}`;
   const label = ans.m === 'flex' ? 'the next two months' : ans.m[0].toUpperCase() + ans.m.slice(1);
   const lines = picks.map((p, i) => [
     `${i + 1}. ${p.name}${p.country ? `, ${p.country}` : ''}: ${p.reasons.join(', ')}` +
       (p.avgHighC != null ? ` (average high ${p.avgHighC} °C, from the VoyageHacks month guide)` : p.season === 'in' ? ' (the destination guide recommends this time of year)' : ' (check the best season in the guide)'),
+    ...(p.hotelPerNightEUR ? [`   Hotel: about ${p.hotelPerNightEUR[0]}${p.hotelPerNightEUR[1] !== p.hotelPerNightEUR[0] ? `-${p.hotelPerNightEUR[1]}` : ''} EUR a night${rooms > 1 ? ` for ${rooms} rooms` : ', double room'}; ${nights} nights about ${p.stayEstimateEUR[0]}${p.stayEstimateEUR[1] !== p.stayEstimateEUR[0] ? `-${p.stayEstimateEUR[1]}` : ''} EUR (typical, from the guides; not a live price)`] : []),
+    ...(p.flightEstimate ? [`   Flight: ${p.flightEstimate} nonstop from ${origin} (estimate from distance)`] : []),
+    ...(p.fareEUR ? [`   Flights: from ${p.fareEUR} EUR return per person (cheapest fare Aviasales users found recently; not a live quote)`] : []),
+    ...(p.tripTotalEUR ? [`   Whole trip: about ${p.tripTotalEUR[0]}-${p.tripTotalEUR[1]} EUR for ${nights} nights, everyone${p.tripBudgetFit === 'over' ? ' (over the budget)' : ''}`] : []),
     `   Guide: ${p.guide}`,
     ...p.links.map((l) => `   ${l.label}: ${l.url}`),
   ].join('\n'));
   return {
     structured: { disclosure, tripFinder, answers, picks, packing },
     text: [
-      picks.length ? `Three VoyageHacks picks for a ${ans.s} trip in ${label} (${ans.b} budget, ${ans.w}):`
+      picks.length ? `Three VoyageHacks picks for a ${ans.s} trip in ${label} (${total ? `whole-trip budget ${total.tmax === Infinity ? `${total.tmin} EUR and up` : `${total.tmin}-${total.tmax} EUR`}, flights and hotel${fx ? '' : '; flights not costed'}` : `hotel budget ${range.max === Infinity ? `${range.min} EUR and up` : `${range.min}-${range.max} EUR`} a night per room`}, ${nights} nights, ${ans.w}):`
         : ans.s === 'ski' ? `No ski area in the VoyageHacks guides is open in ${label}. The northern season runs roughly December to April, the southern one (New Zealand, Argentina) June to September.`
           : 'No VoyageHacks destination matches that combination. Try another month or trip type.',
       '',

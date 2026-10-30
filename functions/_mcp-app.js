@@ -89,7 +89,8 @@ select,input{font:inherit;color:var(--fg);background:var(--bg);border:1px solid 
 (function(){
   var MONTHS=['january','february','march','april','may','june','july','august','september','october','november','december'];
   var TYPES=[['beach','Beach'],['city','City break'],['hiking','Hiking'],['ski','Ski'],['campervan','Road trip'],['adventure','Adventure'],['digital-nomad','Working remotely']];
-  var BUDGETS=[['budget','Budget'],['mid','Mid-range'],['luxury','Luxury']];
+  /* Whole trip, everyone, flights + hotel (find_destination trip_budget). */
+  var BUDGETS=[['0-800','Under 800 EUR'],['800-1600','800 to 1,600 EUR'],['1600-3200','1,600 to 3,200 EUR'],['3200-0','3,200 EUR and up']];
   var PARTIES=[['couple','Couple'],['solo','Solo'],['family','Family'],['friends','Friends']];
   var app=document.getElementById('app');
   var seq=0, pending={}, input={}, last=null, canOpen=true;
@@ -118,7 +119,7 @@ select,input{font:inherit;color:var(--fg);background:var(--bg);border:1px solid 
       '<div class="formrow"><b>'+esc(title||'Where should you go? Answer four questions.')+'</b></div>'+
       '<label for="f-month">When<select id="f-month" required><option value="">Pick a month</option>'+options(MONTHS.concat(['flexible']),a.month)+'</select></label>'+
       '<label for="f-type">Kind of trip<select id="f-type" required><option value="">Pick one</option>'+options(TYPES,a.trip_type)+'</select></label>'+
-      '<label for="f-budget">Budget<select id="f-budget">'+options(BUDGETS,a.budget||'mid')+'</select></label>'+
+      '<label for="f-budget">Budget, whole trip (flights + hotel)<select id="f-budget">'+options(BUDGETS,a.trip_budget||'800-1600')+'</select></label>'+
       '<label for="f-who">Who is going<select id="f-who">'+options(PARTIES,a.travelers||'couple')+'</select></label>'+
       '<label for="f-from">Flying from (airport code)<input id="f-from" maxlength="3" placeholder="e.g. LON" value="'+esc(a.origin||'')+'"></label>'+
       '<div class="formrow"><button class="primary" type="button" id="go">Show three destinations</button><span class="note" id="hint">Picks come from the VoyageHacks month guides.</span></div>'+
@@ -131,7 +132,7 @@ select,input{font:inherit;color:var(--fg);background:var(--bg);border:1px solid 
     var go=document.getElementById('go'); if(!go) return;
     go.addEventListener('click',function(e){
       e.preventDefault();
-      var args={ month:val('f-month'), trip_type:val('f-type'), budget:val('f-budget'), travelers:val('f-who') };
+      var args={ month:val('f-month'), trip_type:val('f-type'), trip_budget:val('f-budget'), travelers:val('f-who') };
       var from=val('f-from').toUpperCase().replace(/[^A-Z]/g,''); if(from) args.origin=from;
       if(input.lang) args.lang=input.lang; if(input.country) args.country=input.country;
       if(!args.month||!args.trip_type){ var h=document.getElementById('hint'); if(h) h.textContent='Pick a month and a kind of trip first.'; return; }
@@ -186,14 +187,14 @@ select,input{font:inherit;color:var(--fg);background:var(--bg);border:1px solid 
   function render(sc){
     if(!sc){ return; }
     last=sc;
-    if(sc.answers){ input=Object.assign({},input,{month:sc.answers.month,trip_type:sc.answers.trip_type,budget:sc.answers.budget,travelers:sc.answers.travelers,origin:sc.answers.origin}); }
+    if(sc.answers){ input=Object.assign({},input,{month:sc.answers.month,trip_type:sc.answers.trip_type,budget:sc.answers.budget,trip_budget:sc.answers.trip_budget,travelers:sc.answers.travelers,origin:sc.answers.origin}); }
     var a=sc.answers||input;
     if(sc.needsInput && sc.needsInput.length && !(sc.picks||[]).length){
       app.innerHTML=formHtml(a); bindForm(); size(); return;
     }
     var picks=sc.picks||[];
     var head='<div class="head"><div><h1>'+(picks.length?'Three places for a '+esc(labelFor(TYPES,a.trip_type))+' trip in '+esc(a.month==='flexible'?'the next two months':cap(a.month)):'No match for these answers')+'</h1>'+
-      '<div class="sub">'+esc(({budget:'Low budget',mid:'Mid-range budget',luxury:'Luxury budget'})[a.budget]||'Mid-range budget')+' · '+esc(labelFor(PARTIES,a.travelers))+(a.origin?' · from '+esc(a.origin):'')+'</div></div>'+
+      '<div class="sub">'+esc(a.trip_budget?(BUDGETS.some(function(x){return x[0]===a.trip_budget})?labelFor(BUDGETS,a.trip_budget):a.trip_budget.replace(/-0$/,'+').replace('-',' to ')+' EUR')+', whole trip':(/^\d+-\d+$/.test(a.budget||'')?'Hotel '+a.budget.replace(/-0$/,'+').replace('-',' to ')+' EUR a night':'Hotel '+(a.budget||'mid')))+' · '+esc(labelFor(PARTIES,a.travelers))+(a.origin?' · from '+esc(a.origin):'')+'</div></div>'+
       '<button class="link" id="change">Change answers</button></div>';
     var cards=picks.length?'<div class="cards">'+picks.map(card).join('')+'</div>':'<div class="empty">Try another month or trip type.</div>';
     var pack=(sc.packing||[]).length?'<div class="pack"><h2>Pack for it (picks from the VoyageHacks buying guides)</h2><div class="packrow">'+

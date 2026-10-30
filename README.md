@@ -65,7 +65,7 @@ declares an `outputSchema` and returns `structuredContent` alongside readable te
 | `get_travel_vpn_links` | Travel VPN links |
 | `get_credit_card_links` | Official American Express Germany and Revolut pages, plus verified German fee figures (no referral links) |
 | `get_booking_links` | Several categories of one trip in a single call, filtered by `include` |
-| `find_destination` | Three destinations for a month, trip type, budget and party, with guides, dated hotel and flight links and packing picks; returns the open questions when the month or trip type is missing |
+| `find_destination` | Three destinations for a month, trip type, budget and party, with guides, dated hotel and flight links and packing picks; takes a nightly hotel range (`budget`) or a whole-trip total (`trip_budget`, flights plus hotel) and `nights`, and returns the open questions when the month or trip type is missing |
 
 `get_hotel_links` also returns the same search on Expedia, Vrbo and Agoda (Stay22).
 Gear products link to their card on the VoyageHacks guide that reviews them
@@ -181,7 +181,10 @@ This is a Cloudflare Pages Function (`functions/mcp.js`). To run your own instan
 3. Replace the affiliate constants near the top of `mcp.js` (Travelpayouts
    marker, CJ ids, Stay22 aid) with your own program ids. `find_destination`
    also reads the trip finder data block from `/<lang>/trip-finder/` and the
-   shared matching rules in `assets/js/trip-match.mjs`.
+   shared matching rules in `assets/js/trip-match.mjs`. For whole-trip budgets it
+   prices flights with `functions/_fares.js` (Travelpayouts Data API); set a
+   `TP_TOKEN` secret on the project, or the fare lookup is skipped and only the
+   hotel side is budgeted.
 
 This repository mirrors the production function. The only intentional difference
 is the `htmlToMarkdown` import: production imports `htmlToMarkdown` from the site's
